@@ -66,6 +66,7 @@ class Sessions:
     countdown_s: float
     results_s: float
     presets: list[Preset]
+    hold_grace_s: float = 0.0  # a dip this short pauses a hold's timer instead of resetting it
 
 
 @dataclass(frozen=True)
@@ -116,6 +117,7 @@ def load_config(path: Path = DEFAULT_PATH) -> Config:
             countdown_s=raw["sessions"]["countdown_s"],
             results_s=raw["sessions"]["results_s"],
             presets=[_load_preset(p) for p in raw["sessions"]["presets"]],
+            hold_grace_s=raw["sessions"]["hold_grace_s"],
         ),
     )
     _validate(config)

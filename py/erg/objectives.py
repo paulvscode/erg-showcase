@@ -23,9 +23,8 @@ class Objective:
     def describe(self) -> str:
         """What reaching it means, in French: "50 Wh", "200 W de moyenne sur 2 min"."""
         if self.type == "avg_power_w":
-            return (
-                f"{text.number(self.target)} W de moyenne sur {text.number(self.window_s / 60)} min"
-            )
+            window = text.unit(self.window_s / 60, "min")
+            return f"{text.unit(self.target, 'W')} de moyenne sur {window}"
         return text.energy(self.target)
 
     def validate(self) -> None:

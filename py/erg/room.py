@@ -321,7 +321,7 @@ class Room:
         if reached > self.room_level:
             self.room_level = reached
             self.highlight(
-                text.exclaim(f"⚡ Salle{text.NBSP}: {text.number(steps[reached - 1])} W"), now
+                text.exclaim(f"⚡ Salle{text.NBSP}: {text.unit(steps[reached - 1], 'W')}"), now
             )
 
     # --- objectives ---------------------------------------------------------
@@ -469,7 +469,7 @@ def _ladder_view(steps: list[float], value: float) -> dict:
 
 def _step_text(ladder: str, step: float) -> str:
     if ladder == "power":
-        return text.exclaim(f"⚡ {text.number(step)} W")
+        return text.exclaim(f"⚡ {text.unit(step, 'W')}")
     return text.exclaim(f"🏁 {text.distance(step)}")
 
 

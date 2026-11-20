@@ -7,6 +7,8 @@ from erg.room import ErgDetails, Room
 
 # Rowers and SkiErgs take far fewer strokes per minute than a bike turns.
 STROKE_RATE = {"bike": (60, 95), "row": (20, 32), "ski": (25, 40)}
+# A BikeErg covers about twice a rower's distance for the same power.
+SPEED_FACTOR = {"bike": 2.0, "row": 1.0, "ski": 1.0}
 
 
 class Demo:
@@ -27,7 +29,12 @@ class Demo:
             else:
                 low, high = STROKE_RATE[erg.machine]
                 self.machines[erg.id] = FakeErg(
-                    fake.min_watts, fake.max_watts, self.rng, min_cadence=low, max_cadence=high
+                    fake.min_watts,
+                    fake.max_watts,
+                    self.rng,
+                    min_cadence=low,
+                    max_cadence=high,
+                    speed_factor=SPEED_FACTOR[erg.machine],
                 )
         for erg_id, person in zip(self.machines, self.room.config.participants, strict=False):
             self.room.assign(person.id, erg_id, started_at)

@@ -23,6 +23,7 @@ class Track:
     energy_start: float = 0.0
     distance_start: float = 0.0
     held_s: float = 0.0
+    below_s: float = 0.0  # how long the level has been under target, for the grace period
     splits: list[float] = field(default_factory=list)  # elapsed time when each step was cleared
 
     @property
@@ -37,6 +38,7 @@ class Track:
         self.energy_start = energy
         self.distance_start = distance
         self.held_s = 0.0
+        self.below_s = 0.0
 
     def value(self, energy: float, distance: float) -> float:
         step = self.current
@@ -50,17 +52,31 @@ class Track:
         return min(1.0, max(0.0, self.value(energy, distance) / self.current.goal))
 
     def advance(
-        self, energy: float, distance: float, level: float, tick_s: float, elapsed: float
+        self,
+        energy: float,
+        distance: float,
+        level: float,
+        tick_s: float,
+        elapsed: float,
+        grace_s: float = 0.0,
     ) -> Step | None:
         """Take the latest totals; return the step this cleared, if any.
 
-        `level` is the power that hold / all_in objectives compare with their target.
+        `level` is what a timed objective compares with its target (watts, or
+        km/h for speed). A dip below target pauses the timer; only a dip longer
+        than `grace_s` starts it over, so stroke-to-stroke wobble isn't punished.
         """
         step = self.current
         if step is None:
             return None
         if step.timed:
-            self.held_s = self.held_s + tick_s if level >= step.target else 0.0
+            if level >= step.target:
+                self.held_s += tick_s
+                self.below_s = 0.0
+            else:
+                self.below_s += tick_s
+                if self.below_s > grace_s:
+                    self.held_s = 0.0
         if self.progress(energy, distance) < 1:
             return None
         self.splits.append(elapsed)
@@ -99,6 +115,7 @@ class Workout:
     starts_at: float
     ends_at: float
     tick_s: float
+    hold_grace_s: float = 0.0
     record_s: float | None = None  # best time before this run (Blitz, Squad)
     phase: str = "countdown"  # countdown -> running -> finished
     group: Track | None = None  # Training and Blitz: the room's objectives
@@ -169,7 +186,12 @@ class Workout:
         powers = [room.ergs[r.erg_id].meter.power_at(now) for r in self.riders]
         level = min(powers) if step.kind == "all_in" else sum(powers)
         cleared = self.group.advance(
-            self._energy(room), self._distance(room), level, self.tick_s, self.elapsed(now)
+            self._energy(room),
+            self._distance(room),
+            level,
+            self.tick_s,
+            self.elapsed(now),
+            self.hold_grace_s,
         )
         if cleared:
             room.highlight(f"✓ {cleared.label()}", now)
@@ -179,9 +201,15 @@ class Workout:
             track = rider.track
             if track.done:
                 continue
-            level = room.ergs[rider.erg_id].meter.power_at(now)
+            erg = room.ergs[rider.erg_id]
+            if track.current.kind == "speed":
+                level = (erg.details.speed_mps or 0.0) * 3.6 if room.is_online(erg, now) else 0.0
+            else:
+                level = erg.meter.power_at(now)
             energy, distance = self._rider_energy(room, rider), self._rider_distance(room, rider)
-            cleared = track.advance(energy, distance, level, self.tick_s, self.elapsed(now))
+            cleared = track.advance(
+                energy, distance, level, self.tick_s, self.elapsed(now), self.hold_grace_s
+            )
             if cleared is None:
                 continue
             room.highlight(f"✓ {cleared.rider_label()}", now, rider.erg_id)

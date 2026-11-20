@@ -185,6 +185,7 @@ runner_weight_kg: 75
 sessions:
   countdown_s: 5
   results_s: 30
+  hold_grace_s: 2
   presets:
   - id: training-3
     name: Entraînement (démo 3 min)
@@ -273,3 +274,60 @@ sessions:
         target: 2
       - kind: distance
         target: 300
+  - id: intervals-demo
+    name: Intervalles (démo)
+    type: squad
+    duration_min: 5
+    machines:
+      bike:
+      - kind: hold
+        target: 150
+        seconds: 10
+      - kind: speed
+        target: 25
+        seconds: 10
+      - kind: hold
+        target: 180
+        seconds: 10
+      - kind: speed
+        target: 27
+        seconds: 10
+      row:
+      - kind: hold
+        target: 130
+        seconds: 10
+      - kind: hold
+        target: 150
+        seconds: 10
+      - kind: hold
+        target: 170
+        seconds: 10
+      - kind: hold
+        target: 180
+        seconds: 10
+      ski:
+      - kind: hold
+        target: 100
+        seconds: 10
+      - kind: hold
+        target: 120
+        seconds: 10
+      - kind: hold
+        target: 130
+        seconds: 10
+      - kind: hold
+        target: 140
+        seconds: 10
+      run:
+      - kind: speed
+        target: 9
+        seconds: 10
+      - kind: hold
+        target: 170
+        seconds: 10
+      - kind: speed
+        target: 10
+        seconds: 10
+      - kind: hold
+        target: 190
+        seconds: 10

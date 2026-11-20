@@ -121,9 +121,11 @@
   .share .row b { font-family: var(--display); font-style: normal; font-size: 2.2vw; color: var(--gold); }
   .share .bar { height: .7vw; margin-top: .3vw; }
   .share .bar > div { background: var(--gold); }
-  .share.mine .row { white-space: normal; gap: .5vw; }
-  .share.mine .row b { font-size: 1.6vw; margin-right: .2em; }
-  .share.mine .row span:first-child { color: var(--text); font-size: 1.15vw; }
+  .share.mine .what { font-size: 1.15vw; line-height: 1.25; }
+  .share.mine .what b { font-family: var(--display); font-style: normal; font-size: 1.6vw; color: var(--gold); margin-right: .2em; }
+  .share.mine .meter { display: flex; align-items: center; gap: .6vw; margin-top: .3vw; }
+  .share.mine .meter .bar { flex: 1; margin-top: 0; }
+  .share.mine .meter span { font-size: 1vw; color: var(--muted); white-space: nowrap; }
   .approx { color: var(--muted); font-size: .5em; margin-right: .1em; }
 
   .overlay {
@@ -244,7 +246,7 @@ function stats(e) {
   } else if (e.machine === "bike") {
     items = [stat(e.cadence, "tr/min", "Cadence"), stat(kmh(d.speed_mps), "km/h", "Vitesse")];
   } else {
-    items = [stat(e.cadence, "cps/min", "Cadence"), stat(pace(d.speed_mps, 500), "/500 m", "Allure")];
+    items = [stat(e.cadence, "cps/min", "Cadence"), stat(pace(d.speed_mps, 500), "/500 m", "Allure")];
   }
   items.push(stat(d.calories ?? "—", "kcal", "Calories"));
   if (d.heart_rate != null) items.push(stat(d.heart_rate, "bpm", "♥ Cardio"));
@@ -376,6 +378,8 @@ function objectiveText(o) {
 
 // What a rider sees on their tile during a session: their share of the energy,
 // or in a Squad their own current objective.
+const TIMED = new Set(["hold", "all_in", "speed"]);
+
 function riderStrip(r) {
   if (r.step_count == null) {
     return `<div class="share"><div class="row"><span><b>${Math.round(r.share * 100)} %</b> de la séance</span>
@@ -386,8 +390,9 @@ function riderStrip(r) {
     return `<div class="share"><div class="row"><span><b>★ ${r.step_count}/${r.step_count}</b> terminé</span>
       <span>${r.finished_s != null ? clock(r.finished_s) : ""}</span></div>${bar(1)}</div>`;
   }
-  return `<div class="share mine"><div class="row"><span><b>${r.steps_done + 1}/${r.step_count}</b> ${esc(o.label)}</span>
-    <span>${Math.floor(o.progress * 100)} %</span></div>${bar(o.progress)}</div>`;
+  const status = TIMED.has(o.kind) ? `tenu ${Math.floor(o.value)}/${o.goal} s` : `${Math.floor(o.progress * 100)} %`;
+  return `<div class="share mine"><div class="what"><b>${r.steps_done + 1}/${r.step_count}</b> ${esc(o.label)}</div>
+    <div class="meter">${bar(o.progress)}<span>${status}</span></div></div>`;
 }
 
 function setBar(id, progress, step) {

@@ -24,6 +24,7 @@ class FakeErg:
     rng: random.Random
     min_cadence: float = 60
     max_cadence: float = 95
+    speed_factor: float = 1.0  # 2 for a BikeErg, which covers about twice a rower's distance
     effort: float = 0.0
     distance_m: float = 0.0
     calories: float = 0.0
@@ -37,7 +38,7 @@ class FakeErg:
         stroke = self.effort + self.rng.gauss(0, 12)
         watts = round(min(self.max_watts, max(self.min_watts, stroke)))
 
-        speed = (watts / WATTS_PER_SPEED_CUBED) ** (1 / 3)
+        speed = (watts / WATTS_PER_SPEED_CUBED) ** (1 / 3) * self.speed_factor
         self.distance_m += speed * elapsed_s
         calories_per_hour = CALORIES_PER_HOUR_PER_WATT * watts + RESTING_CALORIES_PER_HOUR
         self.calories += calories_per_hour * elapsed_s / 3600

@@ -102,6 +102,7 @@ class SessionDesk:
             starts_at=starts_at,
             ends_at=starts_at + duration * 60,
             tick_s=self.config.timing.tick_s,
+            hold_grace_s=self.config.sessions.hold_grace_s,
             record_s=self.records.get(preset.id),
         )
         log.info("session %s starting with %s", preset.id, ", ".join(r.name for r in riders))
