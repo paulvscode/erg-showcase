@@ -104,6 +104,7 @@ class Rider:
     name: str
     weight_kg: float | None = None
     track: Track | None = None  # Squad only: this rider's own objectives
+    member_id: str | None = None  # set when the rider is a known member
     energy_start: float = 0.0
     distance_start: float = 0.0
 
@@ -122,6 +123,7 @@ class Workout:
     finished_at: float | None = None
     final_riders: list[dict] | None = None
     saved: bool = False
+    awards: dict[str, list[str]] = field(default_factory=dict)  # badges won, per erg
 
     def __post_init__(self) -> None:
         if self.preset.type != "squad":
@@ -254,6 +256,7 @@ class Workout:
             view = {
                 "erg_id": rider.erg_id,
                 "name": rider.name,
+                "member_id": rider.member_id,
                 "energy_wh": energy,
                 "share": energy / total if total > 0 else 0.0,
                 "avg_w": energy * 3600 / elapsed if elapsed > 0 else 0.0,
@@ -276,6 +279,8 @@ class Workout:
         riders = self.final_riders
         if riders is None:
             riders = self._rider_views(room, now)
+        for rider in riders:
+            rider["awards"] = self.awards.get(rider["erg_id"], [])
         state = {
             "preset": self.preset.name,
             "type": self.preset.type,

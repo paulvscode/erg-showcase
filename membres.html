@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adhérents</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap">
+<style>
+  :root {
+    --bg: #000000; --panel: #111111; --line: #29282d; --text: #ffffff; --muted: #9a99a0;
+    --red: #e30613; --gold: #c9a54e;
+    --display: "Racing Sans One", "Arial Black", sans-serif;
+    --body: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--text); font-family: var(--body); }
+  main { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+  h1, h2 { font-family: var(--display); font-weight: 400; margin: 0; }
+  h1 { font-size: 34px; }
+  h2 { font-size: 22px; }
+  .label { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+  section { background: var(--panel); border-left: 4px solid var(--red); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  input, select { font-size: 16px; padding: 10px; background: #000; color: var(--text); border: 1px solid var(--line); min-width: 0; }
+  input:focus, select:focus { outline: 2px solid var(--red); border-color: transparent; }
+  button { font-family: var(--display); font-size: 18px; color: var(--text); background: var(--red); border: 0; padding: 10px 16px; cursor: pointer; }
+  form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+  form label { display: flex; flex-direction: column; gap: 4px; flex: 1 1 140px; }
+  .msg { min-height: 1.2em; font-size: 14px; }
+  .msg.error { color: #ff6b6b; }
+  .msg.ok { color: var(--gold); }
+  .table { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+  td a { color: var(--text); font-family: var(--display); font-size: 18px; text-decoration: none; }
+  td a:hover { color: var(--red); }
+  .lvl b { font-family: var(--display); font-weight: 400; color: var(--gold); margin-right: 4px; }
+  .none { color: var(--muted); }
+</style>
+<script src="static-demo.js"></script>
+</head>
+<body>
+<main>
+  <h1>Adhérents</h1>
+
+  <section>
+    <input id="search" type="search" placeholder="Rechercher un nom ou un identifiant" autocomplete="off">
+    <div class="table">
+      <table>
+        <thead><tr><th>Adhérent</th><th>BikeErg</th><th>RowErg</th><th>SkiErg</th><th>Séances</th><th>Badges</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Nouvel adhérent</h2>
+    <form id="add-member">
+      <label><span class="label">Identifiant</span><input name="id" placeholder="A-0412" required></label>
+      <label><span class="label">Nom</span><input name="name" placeholder="Marie D." required></label>
+      <button type="submit">Ajouter</button>
+    </form>
+    <div class="msg" id="member-msg"></div>
+  </section>
+
+  <section>
+    <h2>Saisir un test de palier</h2>
+    <p class="label" style="margin:0">Puissance moyenne sur 4 minutes. Elle fixe le niveau de l’adhérent sur cette machine.</p>
+    <form id="add-test">
+      <label><span class="label">Adhérent</span><select name="member" id="test-member" required></select></label>
+      <label><span class="label">Machine</span>
+        <select name="machine"><option value="row">RowErg</option><option value="bike">BikeErg</option><option value="ski">SkiErg</option></select>
+      </label>
+      <label><span class="label">Watts moyens</span><input name="watts" type="number" min="30" max="1000" step="1" required></label>
+      <label><span class="label">Date</span><input name="date" type="date" id="test-date" required></label>
+      <button type="submit">Enregistrer</button>
+    </form>
+    <div class="msg" id="test-msg"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+// The static showcase runs the server inside the page and provides ergBackend.
+const api = (path, options) => (window.ergBackend ?? window).fetch(path, options);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const MACHINES = ["bike", "row", "ski"];
+let members = [];
+
+function level(entry, machine) {
+  const l = entry.levels[machine];
+  return l ? `<span class="lvl"><b>${l.number}</b>${esc(l.name)}</span>` : `<span class="none">—</span>`;
+}
+
+function render() {
+  const q = $("search").value.trim().toLowerCase();
+  const shown = members.filter((m) => !q || m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
+  $("rows").innerHTML = shown.map((m) => `<tr>
+    <td><a href="membre?id=${encodeURIComponent(m.id)}">${esc(m.name)}</a><br><span class="none">${esc(m.id)}</span></td>
+    ${MACHINES.map((machine) => `<td>${level(m, machine)}</td>`).join("")}
+    <td>${m.sessions}</td><td>${m.badges}</td></tr>`).join("")
+    || `<tr><td colspan="6" class="none">Aucun adhérent pour l’instant.</td></tr>`;
+}
+
+async function load() {
+  members = await (await api("/api/members")).json();
+  const keep = $("test-member").value;
+  $("test-member").innerHTML = members.map((m) => `<option value="${esc(m.id)}">${esc(m.id)} · ${esc(m.name)}</option>`).join("");
+  if (keep) $("test-member").value = keep;
+  render();
+}
+
+function show(id, text, ok) {
+  $(id).textContent = text;
+  $(id).className = `msg ${ok ? "ok" : "error"}`;
+}
+
+async function post(path, body) {
+  const res = await api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return [res.ok, await res.json()];
+}
+
+$("search").addEventListener("input", render);
+
+$("add-member").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const form = new FormData(ev.target);
+  const [ok, body] = await post("/api/members", { id: form.get("id"), name: form.get("name") });
+  show("member-msg", ok ? `${form.get("name")} est ajouté·e.` : body.detail, ok);
+  if (ok) { ev.target.reset(); load(); }
+});
+
+$("add-test").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const form = new FormData(ev.target);
+  const ts = new Date(`${form.get("date")}T12:00:00`).getTime() / 1000;
+  const [ok, body] = await post(`/api/members/${encodeURIComponent(form.get("member"))}/tests`, {
+    machine: form.get("machine"), watts: Number(form.get("watts")), ts,
+  });
+  const badges = ok && body.awards.length ? ` Badges : ${body.awards.join(", ")}` : "";
+  show("test-msg", ok ? `Test enregistré.${badges}` : body.detail, ok);
+  if (ok) load();
+});
+
+$("test-date").value = new Date().toISOString().slice(0, 10);
+load();
+</script>
+</body>
+</html>

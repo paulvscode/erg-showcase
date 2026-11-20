@@ -6,6 +6,7 @@ from pathlib import Path
 
 import yaml
 
+from erg.levels import Level, LevelTable
 from erg.objectives import Objective
 from erg.presets import Preset, Step
 
@@ -94,6 +95,7 @@ class Config:
     milestones: Milestones
     runner_weight_kg: float  # default weight for runners' estimated watts
     sessions: Sessions
+    levels: LevelTable
 
     def all_ergs(self) -> list[ErgConfig]:
         return [erg for ergs in self.gateways.values() for erg in ergs]
@@ -119,9 +121,25 @@ def load_config(path: Path = DEFAULT_PATH) -> Config:
             presets=[_load_preset(p) for p in raw["sessions"]["presets"]],
             hold_grace_s=raw["sessions"]["hold_grace_s"],
         ),
+        levels=_load_levels(raw["levels"]),
     )
     _validate(config)
     return config
+
+
+def _load_levels(raw: dict) -> LevelTable:
+    levels = [
+        Level(
+            number=row["level"],
+            name=row["name"],
+            pace_s=row["pace_s"],
+            percent={**raw["formats"], **row.get("formats", {})},
+        )
+        for row in raw["steps"]
+    ]
+    return LevelTable(
+        levels=levels, test_minutes=raw["test_minutes"], window_days=raw["window_days"]
+    )
 
 
 def _load_preset(raw: dict) -> Preset:
@@ -163,6 +181,7 @@ def _validate(config: Config) -> None:
     preset_ids = [p.id for p in config.sessions.presets]
     if len(preset_ids) != len(set(preset_ids)):
         raise ValueError("sessions.presets: ids must be unique")
+    config.levels.validate()
     for preset in config.sessions.presets:
         preset.validate()
         unknown = set(preset.machines) - set(MACHINES)

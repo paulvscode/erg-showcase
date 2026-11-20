@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mon profil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap">
+<style>
+  :root {
+    --bg: #000000; --panel: #111111; --line: #29282d; --text: #ffffff; --muted: #9a99a0;
+    --red: #e30613; --gold: #c9a54e;
+    --display: "Racing Sans One", "Arial Black", sans-serif;
+    --body: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--text); font-family: var(--body); }
+  main { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+  h1, h2, h3 { font-family: var(--display); font-weight: 400; margin: 0; }
+  h1 { font-size: 44px; line-height: 1; }
+  h2 { font-size: 24px; margin-bottom: 4px; }
+  h3 { font-size: 20px; }
+  a.back { color: var(--muted); text-decoration: none; font-size: 14px; }
+  #nav { display: flex; justify-content: space-between; align-items: center; }
+  #nav .space { font-family: var(--display); color: var(--red); font-size: 18px; }
+  .label { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+  .muted { color: var(--muted); }
+  .panel { background: var(--panel); border-left: 4px solid var(--red); padding: 16px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+
+  header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 16px; }
+  .totals { display: flex; flex-wrap: wrap; gap: 24px; }
+  .total b { display: block; font-family: var(--display); font-weight: 400; font-size: 30px; }
+  .labels { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { background: var(--panel); border: 2px solid var(--gold); padding: 6px 12px; font-family: var(--display); color: var(--gold); font-size: 18px; }
+  .chip.none { border-color: var(--line); color: var(--muted); }
+
+  .machine .lvl { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 10px; }
+  .machine .lvl b { font-family: var(--display); font-weight: 400; font-size: 48px; line-height: 1; color: var(--gold); }
+  .machine .lvl span { font-family: var(--display); font-size: 24px; }
+  .bar { height: 10px; background: var(--line); margin: 6px 0; }
+  .bar > div { height: 100%; background: var(--red); }
+  .bar.done > div { background: var(--gold); }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+  td.num { text-align: right; }
+  .table { overflow-x: auto; }
+
+  .badges { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); }
+  .badge { background: var(--panel); border: 2px solid var(--gold); padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .badge .icon { font-size: 30px; }
+  .badge .name { font-family: var(--display); font-size: 18px; }
+  .badge .count { color: var(--gold); font-family: var(--display); }
+  .badge .detail { color: var(--muted); font-size: 13px; }
+  .badge.locked { border-color: var(--line); opacity: .45; }
+  .badge.locked .icon { filter: grayscale(1); }
+  #error { color: #ff6b6b; }
+</style>
+<script src="static-demo.js"></script>
+</head>
+<body>
+<main>
+  <nav id="nav"><a class="back" href="membres">← Adhérents</a></nav>
+  <div id="error"></div>
+  <div id="profile"></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+// The static showcase runs the server inside the page and provides ergBackend.
+const api = (path, options) => (window.ergBackend ?? window).fetch(path, options);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const wide = (s) => s.replace(/ /g, " ");
+const fr = (n, digits = 0) => wide(n.toLocaleString("fr-FR", { minimumFractionDigits: digits, maximumFractionDigits: digits }));
+const date = (ts) => new Date(ts * 1000).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+const clock = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+const km = (m) => (m < 1000 ? `${fr(m)} m` : `${fr(m / 1000, 1)} km`);
+const MACHINE = { bike: "BikeErg", row: "RowErg", ski: "SkiErg", run: "AssaultRunner" };
+const LEVEL_MACHINES = ["bike", "row", "ski"];
+
+function bar(p) {
+  const pct = Math.max(0, Math.min(1, p)) * 100;
+  return `<div class="bar${p >= 1 ? " done" : ""}"><div style="width:${pct.toFixed(1)}%"></div></div>`;
+}
+
+function chips(p) {
+  return LEVEL_MACHINES.map((m) => {
+    const l = p.levels[m];
+    return l
+      ? `<span class="chip">${MACHINE[m]} · ${esc(l.name)}</span>`
+      : `<span class="chip none">${MACHINE[m]} · pas encore de test</span>`;
+  }).join("");
+}
+
+// The pace a format aims for: per 500 m on RowErg/SkiErg, per 1000 m (and km/h) on BikeErg.
+function paceText(machine, t) {
+  return machine === "bike"
+    ? `${clock(t.pace_s)}/1000 m<br><span class="muted">${fr(t.kmh, 1)} km/h</span>`
+    : `${clock(t.pace_s)}/500 m`;
+}
+
+function machineCard(p, machine) {
+  const l = p.levels[machine];
+  if (!l) {
+    return `<div class="panel machine"><h3>${MACHINE[machine]}</h3>
+      <p class="muted">Pas encore de test de palier sur cette machine.</p></div>`;
+  }
+  let next = `<p class="label">Niveau maximum atteint ★</p>`;
+  if (l.next) {
+    const progress = (l.test_watts - l.level_watts) / (l.next.watts - l.level_watts);
+    const missing = Math.max(0, l.next.watts - l.test_watts);
+    next = `<div class="label">Prochain niveau : ${l.next.number} · ${esc(l.next.name)} à ${fr(l.next.watts)} W</div>
+      ${bar(progress)}<div class="muted">Encore ${fr(missing)} W au prochain test</div>`;
+  }
+  const targets = Object.entries(p.formats).map(([id, name]) => {
+    const t = l.targets[id];
+    return `<tr><td>${esc(name)}</td><td class="num">${fr(t.watts)} W</td><td>${paceText(machine, t)}</td></tr>`;
+  }).join("");
+  return `<div class="panel machine"><h3>${MACHINE[machine]}</h3>
+    <div class="lvl"><b>${l.number}</b><span>${esc(l.name)}</span></div>
+    <div class="muted">Test : ${fr(l.test_watts)} W le ${date(l.test_ts)}</div>
+    <div style="margin:12px 0">${next}</div>
+    <div class="label">Mes cibles</div>
+    <table><tbody>${targets}</tbody></table></div>`;
+}
+
+function badge(b) {
+  const earned = b.count > 0;
+  const count = b.count > 1 ? ` <span class="count">×${b.count}</span>` : "";
+  const detail = earned
+    ? [`Le ${date(b.last_ts)}`, ...b.details].map(esc).join("<br>")
+    : esc(b.how);
+  return `<div class="badge${earned ? "" : " locked"}"><div class="icon">${b.icon}</div>
+    <div class="name">${esc(b.name)}${count}</div><div class="detail">${detail}</div></div>`;
+}
+
+function records(p) {
+  const rows = Object.entries(p.records.machines).map(([m, r]) =>
+    `<tr><td>${MACHINE[m] ?? esc(m)}</td><td class="num">${fr(r.avg_w)} W</td><td class="num">${km(r.distance_m)}</td></tr>`
+  ).join("");
+  if (!rows) return `<p class="muted">Les records apparaissent après une première séance d’au moins 3 minutes.</p>`;
+  return `<table><thead><tr><th>Machine</th><th class="num">Puissance moy.</th><th class="num">Distance</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <p class="muted">Meilleure séance : ${fr(p.records.energy_kj)} kJ</p>`;
+}
+
+function history(p) {
+  if (!p.history.length) return `<p class="muted">Aucune séance pour l’instant.</p>`;
+  const rows = p.history.map((h) => `<tr><td>${date(h.ts)}</td><td>${esc(h.preset)}</td><td>${MACHINE[h.machine] ?? esc(h.machine)}</td>
+    <td class="num">${fr(h.minutes)} min</td><td class="num">${fr(h.avg_w)} W</td><td class="num">${fr(h.energy_kj)} kJ</td>
+    <td class="num">${km(h.distance_m)}</td><td class="num">${h.score != null ? `${fr(h.score * 100)} %` : "—"}</td></tr>`).join("");
+  return `<div class="table"><table><thead><tr><th>Date</th><th>Séance</th><th>Machine</th><th class="num">Durée</th>
+    <th class="num">Puiss. moy.</th><th class="num">Énergie</th><th class="num">Distance</th><th class="num">Score</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+
+function tests(p) {
+  if (!p.tests.length) return `<p class="muted">Aucun test de palier pour l’instant.</p>`;
+  const rows = p.tests.map((t) => `<tr><td>${date(t.ts)}</td><td>${MACHINE[t.machine]}</td>
+    <td class="num">${fr(t.watts)} W</td><td>${t.level.number} · ${esc(t.level.name)}</td></tr>`).join("");
+  return `<div class="table"><table><thead><tr><th>Date</th><th>Machine</th><th class="num">Moyenne 4 min</th><th>Niveau</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+
+function render(p) {
+  document.title = `${p.name} · Profil`;
+  const earned = p.badges.filter((b) => b.count > 0).length;
+  $("profile").innerHTML = `
+    <header>
+      <div><div class="label">${esc(p.id)}</div><h1>${esc(p.name)}</h1></div>
+      <div class="totals">
+        <div class="total"><span class="label">Séances</span><b>${p.totals.sessions}</b></div>
+        <div class="total"><span class="label">Énergie</span><b>${fr(p.totals.energy_kj)} kJ</b></div>
+        <div class="total"><span class="label">Distance</span><b>${km(p.totals.distance_m)}</b></div>
+        <div class="total"><span class="label">Badges</span><b>${earned} / ${p.badges.length}</b></div>
+      </div>
+    </header>
+    <div class="labels" style="margin-top:16px">${chips(p)}</div>
+    <h2 style="margin-top:24px">Mes niveaux</h2>
+    <div class="grid">${LEVEL_MACHINES.map((m) => machineCard(p, m)).join("")}</div>
+    <h2 style="margin-top:24px">Mes badges</h2>
+    <div class="badges">${p.badges.map(badge).join("")}</div>
+    <div class="grid" style="margin-top:24px">
+      <div class="panel"><h2>Mes records</h2>${records(p)}</div>
+      <div class="panel"><h2>Mes tests de palier</h2>${tests(p)}</div>
+    </div>
+    <div class="panel" style="margin-top:12px"><h2>Mes séances</h2>${history(p)}</div>`;
+}
+
+// A member opening their own space sees no staff links, and can sign out.
+function memberView() {
+  $("nav").innerHTML = `<span class="space">Mon espace</span><a class="back" href="espace?logout=1">Se déconnecter</a>`;
+}
+
+async function load() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("vue") === "adherent") memberView();
+  const id = params.get("id");
+  if (!id) { $("error").textContent = "Aucun adhérent choisi."; return; }
+  const res = await api(`/api/members/${encodeURIComponent(id)}`);
+  if (!res.ok) { $("error").textContent = (await res.json()).detail; return; }
+  render(await res.json());
+}
+load();
+</script>
+</body>
+</html>

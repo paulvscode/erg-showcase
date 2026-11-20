@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from erg import text
 from erg.config import Config
+from erg.levels import LEVEL_MACHINES
 from erg.presets import Preset
 from erg.room import Room
 from erg.workout import Rider, Track, Workout
@@ -34,6 +35,7 @@ class RiderEntry:
     erg_id: str
     name: str
     weight_kg: float | None = None
+    member_id: str | None = None
 
 
 class SessionDesk:
@@ -42,13 +44,15 @@ class SessionDesk:
         config: Config,
         room: Room,
         records: dict[str, float],
-        on_finished: Callable[[Workout, dict], None],
+        on_finished: Callable[[Workout, dict], dict[str, list[str]] | None],
+        find_member: Callable[[str], str | None] = lambda member_id: None,
     ) -> None:
         self.config = config
         self.room = room
         self.presets = {p.id: p for p in config.sessions.presets}
         self.records = records  # best time per race preset (Blitz, Squad)
-        self.on_finished = on_finished
+        self.on_finished = on_finished  # returns the badges won per erg, if any
+        self.find_member = find_member  # member id -> name, or None if unknown
         self.workout: Workout | None = None
 
     def setup(self, now: float) -> dict:
@@ -86,6 +90,9 @@ class SessionDesk:
             raise SessionError(400, "Saisissez au moins un prénom.")
         if len({e.erg_id for e in entries}) != len(entries):
             raise SessionError(400, "Un seul prénom par machine.")
+        members = [e.member_id for e in entries if e.member_id]
+        if len(set(members)) != len(members):
+            raise SessionError(400, "Un adhérent ne peut être que sur une machine.")
         riders = [self._rider(preset, e) for e in entries]
         duration = preset.duration_min
         if preset.type == "training" and duration_min:
@@ -114,6 +121,11 @@ class SessionDesk:
         weight = entry.weight_kg
         if weight is not None and not WEIGHT_RANGE_KG[0] <= weight <= WEIGHT_RANGE_KG[1]:
             raise SessionError(400, f"Le poids de {entry.name} semble incorrect.")
+        name = entry.name.strip()[:NAME_MAX]
+        if entry.member_id:
+            name = self.find_member(entry.member_id)
+            if name is None:
+                raise SessionError(400, f"Adhérent inconnu{text.NBSP}: {entry.member_id}.")
         track = None
         if preset.type == "squad":
             steps = preset.machines.get(erg.machine)
@@ -122,7 +134,7 @@ class SessionDesk:
                 message = f"Cette séance n'a pas d'objectifs pour la machine {machine}."
                 raise SessionError(400, message)
             track = Track(steps)
-        return Rider(entry.erg_id, entry.name.strip()[:NAME_MAX], weight, track=track)
+        return Rider(entry.erg_id, name, weight, track=track, member_id=entry.member_id)
 
     def stop(self) -> None:
         if self.workout is None:
@@ -154,7 +166,7 @@ class SessionDesk:
         if preset.is_race and workout.completed:
             seconds = workout.elapsed(now)
             self.records[preset.id] = min(seconds, self.records.get(preset.id, seconds))
-        self.on_finished(workout, workout.view(self.room, now))
+        workout.awards = self.on_finished(workout, workout.view(self.room, now)) or {}
         workout.saved = True
         log.info(
             "session %s finished: %d/%d objectives",
@@ -164,4 +176,15 @@ class SessionDesk:
         )
 
     def view(self, now: float) -> dict | None:
-        return self.workout.view(self.room, now) if self.workout else None
+        if self.workout is None:
+            return None
+        state = self.workout.view(self.room, now)
+        if self.workout.preset.type == "test":
+            # Show each rider the level their average so far would give.
+            levels = self.config.levels
+            for rider in state["riders"]:
+                machine = self.room.ergs[rider["erg_id"]].machine
+                if machine in LEVEL_MACHINES and rider["avg_w"] > 0:
+                    level = levels.level_for(rider["avg_w"])
+                    rider["level"] = {"number": level.number, "name": level.name}
+        return state

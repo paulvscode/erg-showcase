@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Espace adhérent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap">
+<style>
+  :root {
+    --bg: #000000; --panel: #111111; --line: #29282d; --text: #ffffff; --muted: #9a99a0;
+    --red: #e30613; --gold: #c9a54e;
+    --display: "Racing Sans One", "Arial Black", sans-serif;
+    --body: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; padding: 16px; background: var(--bg); color: var(--text); font-family: var(--body);
+    display: flex; align-items: center; justify-content: center; }
+  main { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 20px; }
+  h1 { font-family: var(--display); font-weight: 400; font-size: 38px; margin: 0; line-height: 1.05; }
+  h1 span { color: var(--red); }
+  p { color: var(--muted); margin: 0; }
+  form { background: var(--panel); border-left: 4px solid var(--red); padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  label { display: flex; flex-direction: column; gap: 6px; }
+  .label { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+  input { font-size: 18px; padding: 12px; background: #000; color: var(--text); border: 1px solid var(--line); min-width: 0; }
+  input:focus { outline: 2px solid var(--red); border-color: transparent; }
+  button { font-family: var(--display); font-size: 22px; color: var(--text); background: var(--red); border: 0; padding: 14px; cursor: pointer; }
+  #error { color: #ff6b6b; min-height: 1.2em; }
+  .demo { border: 1px dashed var(--gold); color: var(--gold); padding: 10px 12px; font-size: 14px; }
+</style>
+<script src="static-demo.js"></script>
+</head>
+<body>
+<main>
+  <h1>Mon espace<br><span>adhérent</span></h1>
+  <p>Retrouvez vos niveaux, vos badges et vos performances.</p>
+  <form id="login">
+    <label><span class="label">Identifiant adhérent</span><input name="id" placeholder="A-0412" autocomplete="username" required></label>
+    <label><span class="label">Code</span><input name="code" type="password" inputmode="numeric" placeholder="••••" autocomplete="current-password" required></label>
+    <div id="error"></div>
+    <button type="submit">Se connecter</button>
+  </form>
+  <div class="demo">Démo : essayez <b>A-0412</b> avec n’importe quel code. La connexion n’est pas encore réelle.</div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+// The static showcase runs the server inside the page and provides ergBackend.
+const api = (path, options) => (window.ergBackend ?? window).fetch(path, options);
+const KEY = "erg-member";
+
+// Remembering the member is a convenience only: the page works without storage.
+function remember(id) {
+  try { id ? localStorage.setItem(KEY, id) : localStorage.removeItem(KEY); } catch {}
+}
+function remembered() {
+  try { return localStorage.getItem(KEY); } catch { return null; }
+}
+const open = (id) => { location.href = `membre?id=${encodeURIComponent(id)}&vue=adherent`; };
+
+if (new URLSearchParams(location.search).has("logout")) remember(null);
+else if (remembered()) open(remembered());
+
+$("login").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const id = new FormData(ev.target).get("id").trim();
+  // Demo: the code isn't checked yet, only that the member exists.
+  const res = await api(`/api/members/${encodeURIComponent(id)}`);
+  if (!res.ok) { $("error").textContent = "Identifiant inconnu."; return; }
+  remember(id);
+  open(id);
+});
+</script>
+</body>
+</html>

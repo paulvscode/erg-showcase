@@ -38,7 +38,7 @@
   const ready = (async () => {
     await loadScript(`${PYODIDE}pyodide.js`);
     const py = await loadPyodide({ indexURL: PYODIDE });
-    await py.loadPackage("pyyaml");
+    await py.loadPackage(["pyyaml", "sqlite3"]);
     py.FS.mkdirTree("/app/erg");
     const modules = JSON.parse(await text("py/modules.json"));
     for (const name of modules) {
@@ -76,6 +76,7 @@
     #sc-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 100vw); z-index: 30;
       background: #000; border-left: 3px solid #e30613; transform: translateX(100%); transition: transform .3s; }
     #sc-drawer.open { transform: none; }
+    #sc-drawer.wide { width: min(1180px, 100vw); }
     #sc-drawer iframe { width: 100%; height: 100%; border: 0; }
     #sc-drawer .close { position: absolute; top: 8px; right: 12px; z-index: 1; background: none; border: 0;
       color: #fff; font-size: 32px; cursor: pointer; }
@@ -100,14 +101,23 @@
     const close = () => drawer.classList.remove("open");
     drawer.querySelector(".close").addEventListener("click", close);
 
-    const button = document.createElement("button");
-    button.className = "sc-session";
-    button.textContent = "★ Lancer une séance";
-    button.addEventListener("click", () => {
-      drawer.querySelector("iframe").src = "session.html"; // fresh form each time
-      drawer.classList.add("open");
-    });
-    document.getElementById("controls")?.append(button);
+    // Pages open in the drawer so they share this page's simulation.
+    const pages = [
+      ["★ Lancer une séance", "session.html", false],
+      ["👥 Adhérents", "membres.html", true],
+      ["📱 Espace adhérent", "espace.html", true],
+    ];
+    for (const [label, page, wide] of pages) {
+      const button = document.createElement("button");
+      button.className = "sc-session";
+      button.textContent = label;
+      button.addEventListener("click", () => {
+        drawer.querySelector("iframe").src = page; // fresh page each time
+        drawer.classList.toggle("wide", wide);
+        drawer.classList.add("open");
+      });
+      document.getElementById("controls")?.append(button);
+    }
 
     // Once a session starts, get the drawer out of the way so the screen is visible.
     listeners.add((state) => { if (state.workout) close(); });

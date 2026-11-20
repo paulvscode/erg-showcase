@@ -75,6 +75,7 @@
       <button class="go" type="submit" id="start">Démarrer ▶</button>
     </div>
   </form>
+  <datalist id="members"></datalist>
 </main>
 
 <script>
@@ -84,7 +85,18 @@ const api = (path, options) => (window.ergBackend ?? window).fetch(path, options
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const MACHINE = { bike: "BikeErg", row: "RowErg", ski: "SkiErg", run: "AssaultRunner" };
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-const TYPE_LABEL = { training: "Entraînement · ", blitz: "Blitz · max ", squad: "Squad · max " };
+const TYPE_LABEL = { training: "Entraînement · ", blitz: "Blitz · max ", squad: "Squad · max ", test: "Test · " };
+// "A-0412 · Marie D." -> member, for the name fields' suggestions.
+let memberByLabel = new Map();
+const memberLabel = (m) => `${m.id} · ${m.name}`;
+
+function presetBody(p) {
+  if (p.type === "squad") return squadSteps(p);
+  if (p.type === "test") {
+    return `<p class="squad">Chacun tient la meilleure moyenne possible. Elle donne le niveau de l’adhérent sur sa machine (BikeErg, RowErg, SkiErg).</p>`;
+  }
+  return `<ol>${p.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`;
+}
 let presets = [];
 
 // Each machine type has its own list; the group wins when every rider finishes theirs.
@@ -106,17 +118,20 @@ function choose(id) {
 async function load() {
   const setup = await (await api("/api/session/setup")).json();
   presets = setup.presets;
+  const members = setup.members ?? [];
+  memberByLabel = new Map(members.map((m) => [memberLabel(m), m]));
+  $("members").innerHTML = members.map((m) => `<option value="${esc(memberLabel(m))}"></option>`).join("");
   $("presets").innerHTML = presets.map((p) => `
     <div class="preset" role="button" tabindex="0" data-id="${esc(p.id)}">
       <div class="type">${TYPE_LABEL[p.type]}${p.duration_min} min</div>
       <div class="name">${esc(p.name)}</div>
-      ${p.type === "squad" ? squadSteps(p) : `<ol>${p.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`}
+      ${presetBody(p)}
       ${p.record_s != null ? `<div class="record">Record : ${clock(p.record_s)}</div>` : ""}
     </div>`).join("");
   $("riders").innerHTML = setup.ergs.map((e) => `
     <div class="row${e.online ? "" : " offline"}">
       <div class="machine">${MACHINE[e.machine] ?? esc(e.machine)}<small>${esc(e.id)}${e.online ? "" : " · hors ligne"}</small></div>
-      <input name="name" data-erg="${esc(e.id)}" placeholder="Prénom" maxlength="24" autocomplete="off">
+      <input name="name" data-erg="${esc(e.id)}" list="members" placeholder="Adhérent ou prénom" maxlength="60" autocomplete="off">
       ${e.machine === "run"
         ? `<input name="weight" data-erg="${esc(e.id)}" type="number" min="30" max="250" placeholder="kg (facultatif)">`
         : "<span></span>"}
@@ -146,7 +161,15 @@ $("form").addEventListener("submit", async (ev) => {
   document.querySelectorAll('input[name="weight"]').forEach((i) => { if (i.value) weights[i.dataset.erg] = Number(i.value); });
   const riders = [...document.querySelectorAll('input[name="name"]')]
     .filter((i) => i.value.trim())
-    .map((i) => ({ erg_id: i.dataset.erg, name: i.value.trim(), weight_kg: weights[i.dataset.erg] ?? null }));
+    .map((i) => {
+      const member = memberByLabel.get(i.value.trim());
+      return {
+        erg_id: i.dataset.erg,
+        name: member ? member.name : i.value.trim(),
+        member_id: member ? member.id : null,
+        weight_kg: weights[i.dataset.erg] ?? null,
+      };
+    });
   $("start").disabled = true;
   const res = await api("/api/session/start", {
     method: "POST",

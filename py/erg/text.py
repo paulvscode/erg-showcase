@@ -18,7 +18,8 @@ def unit(value: float, name: str) -> str:
 
 
 def distance(metres: float) -> str:
-    return unit(metres, "m") if metres < 1000 else unit(metres / 1000, "km")
+    """800 -> "800 m", 6047.4 -> "6,05 km"."""
+    return unit(round(metres), "m") if metres < 1000 else unit(round(metres / 1000, 2), "km")
 
 
 def energy(wh: float) -> str:

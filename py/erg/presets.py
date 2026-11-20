@@ -8,7 +8,8 @@ from dataclasses import dataclass, field
 
 from erg import text
 
-TYPES = ("training", "blitz", "squad")
+TYPES = ("training", "blitz", "squad", "test")
+FORMATS = ("endurance", "intervals", "threshold")
 KINDS = ("energy", "distance", "hold", "all_in")
 # All in compares riders with each other, so it makes no sense for one rider.
 # Speed only compares within one machine type (a bike's km/h is not a runner's).
@@ -71,17 +72,26 @@ class Preset:
     duration_min: float  # Training length, or the time limit for Blitz and Squad
     steps: list[Step] = field(default_factory=list)  # Training and Blitz
     machines: dict[str, list[Step]] = field(default_factory=dict)  # Squad, per machine type
+    # Which level target riders are scored against (relative score), if any.
+    format: str | None = None
 
     @property
     def is_race(self) -> bool:
         """Blitz and Squad finish as soon as everything is done, against a record time."""
-        return self.type != "training"
+        return self.type in ("blitz", "squad")
 
     def validate(self) -> None:
         if self.type not in TYPES:
             raise ValueError(f"preset {self.id}: type must be one of {', '.join(TYPES)}")
         if self.duration_min <= 0:
             raise ValueError(f"preset {self.id}: needs a duration")
+        if self.format is not None and self.format not in FORMATS:
+            raise ValueError(f"preset {self.id}: format must be one of {', '.join(FORMATS)}")
+        if self.type == "test":
+            # A step test has no objectives: each rider holds the best average they can.
+            if self.steps or self.machines:
+                raise ValueError(f"preset {self.id}: a test has no steps")
+            return
         if self.type == "squad":
             if self.steps or not self.machines:
                 raise ValueError(f"preset {self.id}: a squad lists steps under machines")

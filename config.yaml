@@ -26,12 +26,6 @@ gateways:
     - id: ERG-03
       name: simulated
       machine: row
-    - id: ERG-04
-      name: simulated
-      machine: run
-    - id: ERG-05
-      name: simulated
-      machine: run
 teams:
 - id: red
   name: Rouge
@@ -262,18 +256,6 @@ sessions:
         target: 1.5
       - kind: distance
         target: 300
-      run:
-      - kind: energy
-        target: 1
-      - kind: distance
-        target: 200
-      - kind: hold
-        target: 180
-        seconds: 10
-      - kind: energy
-        target: 2
-      - kind: distance
-        target: 300
   - id: intervals-demo
     name: Intervalles (démo)
     type: squad
@@ -318,16 +300,45 @@ sessions:
       - kind: hold
         target: 140
         seconds: 10
-      run:
-      - kind: speed
-        target: 9
-        seconds: 10
-      - kind: hold
-        target: 170
-        seconds: 10
-      - kind: speed
-        target: 10
-        seconds: 10
-      - kind: hold
-        target: 190
-        seconds: 10
+levels:
+  test_minutes: 4
+  window_days: 120
+  formats:
+    endurance: 75
+    intervals: 120
+    threshold: 90
+  steps:
+  - level: 1
+    name: Découverte
+    pace_s: 150
+  - level: 2
+    name: Initié
+    pace_s: 140
+  - level: 3
+    name: Actif
+    pace_s: 130
+  - level: 4
+    name: Régulier
+    pace_s: 120
+  - level: 5
+    name: Confirmé
+    pace_s: 112
+  - level: 6
+    name: Performant
+    pace_s: 105
+  - level: 7
+    name: Expert
+    pace_s: 100
+  - level: 8
+    name: Compétiteur
+    pace_s: 96
+  - level: 9
+    name: Élite
+    pace_s: 93
+    formats:
+      intervals: 110
+  - level: 10
+    name: WATT
+    pace_s: 90
+    formats:
+      intervals: 110

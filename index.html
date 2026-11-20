@@ -144,6 +144,8 @@
   .results th { color: var(--muted); font-size: 1.1vw; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
   .results td:nth-child(2) { text-align: left; font-family: var(--display); font-style: normal; }
   .results tr:first-child td { color: var(--gold); }
+  .results td.awards { text-align: left; font-size: 1.1vw; color: var(--gold); font-family: var(--body); font-style: oblique; }
+  .share .level { color: var(--gold); font-family: var(--display); font-style: normal; font-size: 1.3vw; }
 
   #status { position: fixed; right: 1vw; bottom: .5vw; color: var(--muted); font-size: .9vw; }
 
@@ -298,7 +300,10 @@ function tileContent(e, rider) {
 // Tiles are created once and updated in place, so a running celebration isn't restarted.
 const tiles = new Map();
 
+let sessionType = null; // read by riderStrip while the tiles are drawn
+
 function renderErgs(ergs, workout) {
+  sessionType = workout?.type ?? null;
   const riders = new Map((workout?.riders ?? []).map((r) => [r.erg_id, r]));
   const box = $("ergs");
   box.style.setProperty("--cols", Math.min(Math.max(ergs.length, 1), 5));
@@ -381,6 +386,11 @@ function objectiveText(o) {
 const TIMED = new Set(["hold", "all_in", "speed"]);
 
 function riderStrip(r) {
+  if (sessionType === "test") {
+    const level = r.level ? `Niveau ${r.level.number} · ${esc(r.level.name)}` : "";
+    return `<div class="share mine"><div class="what"><b>${int(r.avg_w)} W</b> de moyenne</div>
+      <div class="meter"><span class="level">${level}</span></div></div>`;
+  }
   if (r.step_count == null) {
     return `<div class="share"><div class="row"><span><b>${Math.round(r.share * 100)} %</b> de la séance</span>
       <span>${fr(r.energy_wh, 1)} Wh</span></div>${bar(r.share)}</div>`;
@@ -421,13 +431,22 @@ function renderWorkout(w) {
   if (!w) return;
   if (w.phase === "finished") { renderResults(w); return; }
 
-  const race = w.type !== "training";
+  const race = w.type === "blitz" || w.type === "squad";
   $("s-name").textContent = w.preset;
   $("s-clock").textContent = clock(race ? w.elapsed_s : w.remaining_s);
   $("s-clock-sub").textContent = race
     ? (w.record_s != null ? `Record : ${clock(w.record_s)}` : "Pas encore de record : à vous !")
     : "restant";
 
+  if (w.type === "test") {
+    const progress = w.elapsed_s / Math.max(w.elapsed_s + w.remaining_s, 1);
+    $("s-step").textContent = "Test de palier";
+    $("s-what").textContent = "Tenez la meilleure moyenne possible";
+    setBar("s-bar", progress, null);
+    $("s-pct").textContent = `${Math.floor(progress * 100)} %`;
+    $("s-sub").textContent = "Le niveau de chacun est calculé sur sa puissance moyenne.";
+    return;
+  }
   if (w.group) {
     const g = w.group;
     $("s-step").textContent = "Objectif collectif";
@@ -452,6 +471,7 @@ function renderWorkout(w) {
 }
 
 function renderResults(w) {
+  if (w.type === "test") { renderTestResults(w); return; }
   const squad = w.type === "squad";
   let headline = `${w.steps_done} / ${w.step_count} objectifs`;
   if (w.type === "blitz" && w.completed) headline = `Terminé en ${clock(w.elapsed_s)}`;
@@ -468,12 +488,27 @@ function renderResults(w) {
       ? `<td>${r.steps_done}/${r.step_count}</td><td>${r.finished_s != null ? clock(r.finished_s) : "—"}</td>`
       : `<td>${Math.round(r.share * 100)} %</td>`;
     return `<tr><td>${i + 1}</td><td>${esc(r.name)}</td>${first}
-      <td>${fr(r.energy_wh, 1)} Wh</td><td>${int(r.avg_w)} W</td><td>${km(r.distance_m)}</td></tr>`;
+      <td>${fr(r.energy_wh, 1)} Wh</td><td>${int(r.avg_w)} W</td><td>${km(r.distance_m)}</td>${awardsCell(r)}</tr>`;
   }).join("");
   const heads = squad ? "<th>Objectifs</th><th>Terminé à</th>" : "<th>Part</th>";
   $("results").innerHTML = `<h1>${esc(w.preset)}</h1>
     <div class="headline">${headline}</div><div class="record">${record}</div>
-    <table><tr><th></th><th></th>${heads}<th>Énergie</th><th>Puiss. moy.</th><th>Distance</th></tr>${rows}</table>`;
+    <table><tr><th></th><th></th>${heads}<th>Énergie</th><th>Puiss. moy.</th><th>Distance</th><th>Badges</th></tr>${rows}</table>`;
+}
+
+function awardsCell(r) {
+  return `<td class="awards">${(r.awards ?? []).map(esc).join("<br>")}</td>`;
+}
+
+function renderTestResults(w) {
+  const rows = [...w.riders].sort((a, b) => b.avg_w - a.avg_w).map((r, i) =>
+    `<tr><td>${i + 1}</td><td>${esc(r.name)}</td><td>${int(r.avg_w)} W</td>
+      <td>${r.level ? `${r.level.number} · ${esc(r.level.name)}` : "—"}</td>
+      <td>${fr(r.energy_wh, 1)} Wh</td><td>${km(r.distance_m)}</td>${awardsCell(r)}</tr>`
+  ).join("");
+  $("results").innerHTML = `<h1>${esc(w.preset)}</h1>
+    <div class="headline">Test terminé</div><div class="record">Les niveaux sont enregistrés sur les profils.</div>
+    <table><tr><th></th><th></th><th>Moyenne</th><th>Niveau</th><th>Énergie</th><th>Distance</th><th>Badges</th></tr>${rows}</table>`;
 }
 
 // Demo controls: only shown when the server runs with --demo.
