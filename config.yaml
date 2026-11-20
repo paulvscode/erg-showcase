@@ -34,11 +34,11 @@ gateways:
       machine: run
 teams:
 - id: red
-  name: Red
+  name: Rouge
 - id: blue
-  name: Blue
+  name: Bleu
 - id: green
-  name: Green
+  name: Vert
 participants:
 - id: p01
   name: Alice
@@ -187,7 +187,7 @@ sessions:
   results_s: 30
   presets:
   - id: training-3
-    name: Training (3 min demo)
+    name: Entraînement (démo 3 min)
     type: training
     duration_min: 3
     steps:
@@ -204,7 +204,7 @@ sessions:
     - kind: energy
       target: 20
   - id: blitz-demo
-    name: Blitz (demo)
+    name: Blitz (démo)
     type: blitz
     duration_min: 5
     steps:
@@ -221,7 +221,7 @@ sessions:
     - kind: energy
       target: 8
   - id: squad-demo
-    name: Squad (demo)
+    name: Squad (démo)
     type: squad
     duration_min: 5
     machines:

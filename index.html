@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Erg Power</title>
+<title>Puissance Erg</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap">
@@ -156,12 +156,12 @@
 <body>
   <section class="top" id="normal-top">
     <div class="panel">
-      <div class="label">Room power</div>
+      <div class="label">Puissance salle</div>
       <div class="big" id="watts">0<small>W</small></div>
       <div id="room-ladder"></div>
     </div>
     <div class="panel today">
-      <div class="label">Today</div>
+      <div class="label">Aujourd’hui</div>
       <div class="big" id="today">0<small>Wh</small></div>
       <div id="today-goal"></div>
     </div>
@@ -169,7 +169,7 @@
   </section>
   <section class="top session" id="session-top" hidden>
     <div class="panel">
-      <div class="label" id="s-name">Session</div>
+      <div class="label" id="s-name">Séance</div>
       <div class="clock" id="s-clock">0:00</div>
       <div class="sub" id="s-clock-sub"></div>
     </div>
@@ -188,28 +188,33 @@
   <div class="overlay results" id="results" hidden></div>
   <div id="banner"></div>
   <div id="controls" hidden>
-    <span class="tag">DEMO</span>
-    <button data-act="start">▶ Start</button>
+    <span class="tag">DÉMO</span>
+    <button data-act="start">▶ Démarrer</button>
     <button data-act="pause">⏸ Pause</button>
-    <button data-act="reset-objectives">↺ Reset objectives</button>
-    <button data-act="reset">⟲ Reset</button>
+    <button data-act="reset-objectives">↺ Réinit. objectifs</button>
+    <button data-act="reset">⟲ Réinitialiser</button>
   </div>
-  <div id="status">connecting…</div>
+  <div id="status">connexion…</div>
 
 <script>
 const $ = (id) => document.getElementById(id);
 // The static showcase runs the server inside the page and provides ergBackend.
 const api = (path, options) => (window.ergBackend ?? window).fetch(path, options);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const int = (n) => Math.round(n).toLocaleString("en-US");
+// French numbers: "1 090", "14,5".
+// toLocaleString separates thousands with a narrow space the display font lacks.
+const wide = (s) => s.replace(/\u202f/g, "\u00a0");
+const fr = (n, digits = 0) => wide(n.toLocaleString("fr-FR", { minimumFractionDigits: digits, maximumFractionDigits: digits }));
+const upTo = (n, digits) => wide(n.toLocaleString("fr-FR", { maximumFractionDigits: digits }));
+const int = (n) => fr(Math.round(n));
 
 const MACHINE = { bike: "BikeErg", row: "RowErg", ski: "SkiErg", run: "AssaultRunner" };
-const PERIOD = { day: "Today", week: "This week", month: "This month", year: "This year", all: "All time" };
+const PERIOD = { day: "Aujourd’hui", week: "Cette semaine", month: "Ce mois-ci", year: "Cette année", all: "Depuis le début" };
 
 // [number, unit] so the unit can be styled smaller.
 function energy(wh) {
   if (wh < 1000) return [int(wh), "Wh"];
-  return [(wh / 1000).toFixed(wh < 10000 ? 2 : 1), "kWh"];
+  return [fr(wh / 1000, wh < 10000 ? 2 : 1), "kWh"];
 }
 
 function bar(p) {
@@ -223,7 +228,7 @@ function pace(speed, metres) {
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 }
 
-const kmh = (speed) => (speed != null ? (speed * 3.6).toFixed(1) : "—");
+const kmh = (speed) => (speed != null ? fr(speed * 3.6, 1) : "—");
 
 function stat(value, unit, key) {
   return `<div class="stat"><div class="v">${value}${unit ? `<small>${unit}</small>` : ""}</div><div class="k">${key}</div></div>`;
@@ -233,21 +238,21 @@ function stats(e) {
   const d = e.details || {};
   let items;
   if (e.machine === "run") {
-    items = [stat(pace(d.speed_mps, 1000), "/km", "Pace")];
+    items = [stat(pace(d.speed_mps, 1000), "/km", "Allure")];
     // Without power, speed is already the big number.
-    if (e.has_power) items.unshift(stat(kmh(d.speed_mps), "km/h", "Speed"));
+    if (e.has_power) items.unshift(stat(kmh(d.speed_mps), "km/h", "Vitesse"));
   } else if (e.machine === "bike") {
-    items = [stat(e.cadence, "rpm", "Cadence"), stat(kmh(d.speed_mps), "km/h", "Speed")];
+    items = [stat(e.cadence, "tr/min", "Cadence"), stat(kmh(d.speed_mps), "km/h", "Vitesse")];
   } else {
-    items = [stat(e.cadence, "spm", "Cadence"), stat(pace(d.speed_mps, 500), "/500m", "Pace")];
+    items = [stat(e.cadence, "cps/min", "Cadence"), stat(pace(d.speed_mps, 500), "/500 m", "Allure")];
   }
   items.push(stat(d.calories ?? "—", "kcal", "Calories"));
-  if (d.heart_rate != null) items.push(stat(d.heart_rate, "bpm", "♥ Heart"));
+  if (d.heart_rate != null) items.push(stat(d.heart_rate, "bpm", "♥ Cardio"));
   return `<div class="stats">${items.join("")}</div>`;
 }
 
 function km(m) {
-  return m < 1000 ? `${Math.round(m)} m` : `${+(m / 1000).toFixed(2)} km`;
+  return m < 1000 ? `${int(m)} m` : `${upTo(m / 1000, 2)} km`;
 }
 
 // One segment per step: green when done, the current one fills up in orange.
@@ -255,15 +260,15 @@ function ladder(kind, l) {
   const power = kind === "power";
   const fmt = power ? (v) => `${int(v)} W` : km;
   let right = `<span><b>${fmt(l.value)}</b> / ${fmt(l.next)}</span>`;
-  if (l.measuring) right = `<span>measuring…</span>`;
-  else if (l.next == null) right = `<span class="max">ALL DONE ★</span>`;
+  if (l.measuring) right = `<span>mesure…</span>`;
+  else if (l.next == null) right = `<span class="max">TERMINÉ ★</span>`;
   const segments = l.steps.map((_, i) => {
     if (i < l.reached) return `<div class="dot done"></div>`;
     const fill = i === l.reached ? l.progress * 100 : 0;
     return `<div class="dot"><i style="width:${fill.toFixed(1)}%"></i></div>`;
   }).join("");
   return `<div class="ladder">
-    <div class="row"><span>${power ? "⚡" : "🏁"}<span class="lvl">Level ${l.reached}</span></span>${right}</div>
+    <div class="row"><span>${power ? "⚡" : "🏁"}<span class="lvl">Niveau ${l.reached}</span></span>${right}</div>
     <div class="dots">${segments}</div>
   </div>`;
 }
@@ -271,8 +276,8 @@ function ladder(kind, l) {
 function tileContent(e, rider) {
   const name = rider ? rider.name : e.participant?.name;
   const head = `<div class="head"><span class="machine">${MACHINE[e.machine] ?? esc(e.machine)}</span><span>${esc(e.id)}</span></div>`;
-  const who = `<div class="who${name ? "" : " free"}">${name ? esc(name) : "Free"}</div>`;
-  if (!e.online) return `${head}${who}<div class="offline-text">Offline</div>`;
+  const who = `<div class="who${name ? "" : " free"}">${name ? esc(name) : "Libre"}</div>`;
+  if (!e.online) return `${head}${who}<div class="offline-text">Hors ligne</div>`;
   const ladders = e.session
     ? ["power", "distance"].filter((k) => e.session[k]).map((k) => ladder(k, e.session[k])).join("")
     : "";
@@ -344,13 +349,13 @@ function render(s) {
 
   const daily = s.overall.find((o) => o.period === "day");
   $("today-goal").innerHTML = daily
-    ? `${bar(daily.progress)}<div class="sub">${Math.floor(daily.progress * 100)}% of today's goal · ${energy(daily.target).join(" ")}</div>`
+    ? `${bar(daily.progress)}<div class="sub">${Math.floor(daily.progress * 100)} % de l’objectif du jour · ${energy(daily.target).join(" ")}</div>`
     : "";
   const rows = s.overall.filter((o) => o !== daily).map((o) =>
     `<div class="goal"><span class="name">${PERIOD[o.period]}</span>${bar(o.progress)}
       <span class="value">${energy(o.value)[0]} <small>/ ${energy(o.target).join(" ")}</small></span></div>`
   );
-  $("goals").innerHTML = `<div class="label">Gym goals</div>${rows.join("")}`;
+  $("goals").innerHTML = `<div class="label">Objectifs de la salle</div>${rows.join("")}`;
 
   renderErgs(s.ergs, s.workout);
   renderWorkout(s.workout);
@@ -364,25 +369,25 @@ let lastStep = null;
 let goUntil = 0;
 
 function objectiveText(o) {
-  if (o.kind === "energy") return `${o.value.toFixed(1)} / ${o.goal} Wh`;
+  if (o.kind === "energy") return `${fr(o.value, 1)} / ${upTo(o.goal, 2)} Wh`;
   if (o.kind === "distance") return `${km(o.value)} / ${km(o.goal)}`;
-  return `held ${Math.floor(o.value)} / ${o.goal} s`;
+  return `tenu ${Math.floor(o.value)} / ${o.goal} s`;
 }
 
 // What a rider sees on their tile during a session: their share of the energy,
 // or in a Squad their own current objective.
 function riderStrip(r) {
   if (r.step_count == null) {
-    return `<div class="share"><div class="row"><span><b>${Math.round(r.share * 100)}%</b> of the session</span>
-      <span>${r.energy_wh.toFixed(1)} Wh</span></div>${bar(r.share)}</div>`;
+    return `<div class="share"><div class="row"><span><b>${Math.round(r.share * 100)} %</b> de la séance</span>
+      <span>${fr(r.energy_wh, 1)} Wh</span></div>${bar(r.share)}</div>`;
   }
   const o = r.objective;
   if (!o) {
-    return `<div class="share"><div class="row"><span><b>★ ${r.step_count}/${r.step_count}</b> all done</span>
+    return `<div class="share"><div class="row"><span><b>★ ${r.step_count}/${r.step_count}</b> terminé</span>
       <span>${r.finished_s != null ? clock(r.finished_s) : ""}</span></div>${bar(1)}</div>`;
   }
   return `<div class="share mine"><div class="row"><span><b>${r.steps_done + 1}/${r.step_count}</b> ${esc(o.label)}</span>
-    <span>${Math.floor(o.progress * 100)}%</span></div>${bar(o.progress)}</div>`;
+    <span>${Math.floor(o.progress * 100)} %</span></div>${bar(o.progress)}</div>`;
 }
 
 function setBar(id, progress, step) {
@@ -396,14 +401,14 @@ function setBar(id, progress, step) {
 function renderWorkout(w) {
   $("normal-top").hidden = Boolean(w);
   $("session-top").hidden = !w;
-  // "GO!" stays up a moment after the countdown ends.
+  // "GO !" stays up a moment after the countdown ends.
   if (lastPhase === "countdown" && w?.phase === "running") goUntil = Date.now() + 1500;
   lastPhase = w?.phase ?? null;
   const counting = w?.phase === "countdown";
   const go = Date.now() < goUntil;
   $("countdown").hidden = !(counting || go);
   if (counting || go) {
-    $("count-num").textContent = counting ? Math.ceil(w.countdown_s) : "GO!";
+    $("count-num").textContent = counting ? Math.ceil(w.countdown_s) : "GO !";
     $("count-num").classList.toggle("go", !counting);
     $("count-hint").textContent = counting ? w.preset : "";
   }
@@ -415,27 +420,27 @@ function renderWorkout(w) {
   $("s-name").textContent = w.preset;
   $("s-clock").textContent = clock(race ? w.elapsed_s : w.remaining_s);
   $("s-clock-sub").textContent = race
-    ? (w.record_s != null ? `Record ${clock(w.record_s)}` : "No record yet: set one!")
-    : "remaining";
+    ? (w.record_s != null ? `Record : ${clock(w.record_s)}` : "Pas encore de record : à vous !")
+    : "restant";
 
   if (w.group) {
     const g = w.group;
-    $("s-step").textContent = "Group objective";
+    $("s-step").textContent = "Objectif collectif";
     $("s-what").textContent = g.riders_done === g.rider_count
-      ? "Achieved ★"
-      : "Everyone completes their objectives";
+      ? "Atteint ★"
+      : "Chacun termine ses objectifs";
     setBar("s-bar", g.progress, null);
-    $("s-pct").textContent = `${Math.floor(g.progress * 100)}%`;
-    $("s-sub").textContent = `${w.steps_done} / ${w.step_count} objectives · ${g.riders_done} / ${g.rider_count} riders finished`;
+    $("s-pct").textContent = `${Math.floor(g.progress * 100)} %`;
+    $("s-sub").textContent = `${w.steps_done} / ${w.step_count} objectifs · ${g.riders_done} / ${g.rider_count} participants ont terminé`;
     return;
   }
   const o = w.objective;
-  $("s-step").textContent = o ? `Objective ${w.steps_done + 1} / ${w.step_count}` : `${w.step_count} / ${w.step_count} objectives`;
-  $("s-what").textContent = o ? o.label : "All objectives done ★";
+  $("s-step").textContent = o ? `Objectif ${w.steps_done + 1} / ${w.step_count}` : `${w.step_count} / ${w.step_count} objectifs`;
+  $("s-what").textContent = o ? o.label : "Tous les objectifs atteints ★";
   const progress = o ? o.progress : 1;
   setBar("s-bar", progress, w.steps_done);
   lastStep = w.steps_done;
-  $("s-pct").textContent = `${Math.floor(progress * 100)}%`;
+  $("s-pct").textContent = `${Math.floor(progress * 100)} %`;
   const splits = w.splits.map((s, i) => `✓${i + 1} ${clock(s.at_s)}`).join(" · ");
   $("s-sub").innerHTML = [o ? objectiveText(o) : "", splits ? `<span class="splits">${splits}</span>` : ""]
     .filter(Boolean).join(" — ");
@@ -443,27 +448,27 @@ function renderWorkout(w) {
 
 function renderResults(w) {
   const squad = w.type === "squad";
-  let headline = `${w.steps_done} / ${w.step_count} objectives`;
-  if (w.type === "blitz" && w.completed) headline = `Done in ${clock(w.elapsed_s)}`;
-  if (squad && w.completed) headline = `Group objective achieved in ${clock(w.elapsed_s)}`;
-  if (w.type === "training") headline += ` · ${w.total_wh.toFixed(1)} Wh`;
+  let headline = `${w.steps_done} / ${w.step_count} objectifs`;
+  if (w.type === "blitz" && w.completed) headline = `Terminé en ${clock(w.elapsed_s)}`;
+  if (squad && w.completed) headline = `Objectif collectif atteint en ${clock(w.elapsed_s)}`;
+  if (w.type === "training") headline += ` · ${fr(w.total_wh, 1)} Wh`;
   let record = "";
-  if (w.new_record) record = "★ NEW RECORD! ★";
-  else if (w.type !== "training" && w.record_s != null) record = `Record ${clock(w.record_s)}`;
+  if (w.new_record) record = "★ NOUVEAU RECORD ! ★";
+  else if (w.type !== "training" && w.record_s != null) record = `Record : ${clock(w.record_s)}`;
   const order = squad
     ? (a, b) => b.steps_done - a.steps_done || (a.finished_s ?? 1e9) - (b.finished_s ?? 1e9)
     : (a, b) => b.energy_wh - a.energy_wh;
   const rows = [...w.riders].sort(order).map((r, i) => {
     const first = squad
       ? `<td>${r.steps_done}/${r.step_count}</td><td>${r.finished_s != null ? clock(r.finished_s) : "—"}</td>`
-      : `<td>${Math.round(r.share * 100)}%</td>`;
+      : `<td>${Math.round(r.share * 100)} %</td>`;
     return `<tr><td>${i + 1}</td><td>${esc(r.name)}</td>${first}
-      <td>${r.energy_wh.toFixed(1)} Wh</td><td>${int(r.avg_w)} W</td><td>${km(r.distance_m)}</td></tr>`;
+      <td>${fr(r.energy_wh, 1)} Wh</td><td>${int(r.avg_w)} W</td><td>${km(r.distance_m)}</td></tr>`;
   }).join("");
-  const heads = squad ? "<th>Objectives</th><th>Finished</th>" : "<th>Share</th>";
+  const heads = squad ? "<th>Objectifs</th><th>Terminé à</th>" : "<th>Part</th>";
   $("results").innerHTML = `<h1>${esc(w.preset)}</h1>
     <div class="headline">${headline}</div><div class="record">${record}</div>
-    <table><tr><th></th><th></th>${heads}<th>Energy</th><th>Avg power</th><th>Distance</th></tr>${rows}</table>`;
+    <table><tr><th></th><th></th>${heads}<th>Énergie</th><th>Puiss. moy.</th><th>Distance</th></tr>${rows}</table>`;
 }
 
 // Demo controls: only shown when the server runs with --demo.
@@ -515,13 +520,13 @@ function onState(s) {
 function connect() {
   if (window.ergBackend) {
     window.ergBackend.subscribe(onState);
-    $("status").textContent = "live";
+    $("status").textContent = "en direct";
     return;
   }
   const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/dashboard`);
-  ws.onopen = () => { $("status").textContent = "live"; };
+  ws.onopen = () => { $("status").textContent = "en direct"; };
   ws.onmessage = (ev) => onState(JSON.parse(ev.data));
-  ws.onclose = () => { $("status").textContent = "reconnecting…"; setTimeout(connect, 1000); };
+  ws.onclose = () => { $("status").textContent = "reconnexion…"; setTimeout(connect, 1000); };
 }
 connect();
 </script>

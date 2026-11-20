@@ -6,6 +6,8 @@ each rider a list for their machine type; the group wins when everyone is done.
 
 from dataclasses import dataclass, field
 
+from erg import text
+
 TYPES = ("training", "blitz", "squad")
 KINDS = ("energy", "distance", "hold", "all_in")
 # All in compares riders with each other, so it makes no sense for one rider.
@@ -37,26 +39,25 @@ class Step:
         if self.timed and self.seconds <= 0:
             raise ValueError(f"{where}: {self.kind} needs seconds > 0")
 
-    def _distance(self) -> str:
-        return f"{self.target:g} m" if self.target < 1000 else f"{self.target / 1000:g} km"
-
     def label(self) -> str:
         """Wording for an objective the whole room shares."""
+        target, seconds = text.number(self.target), text.number(self.seconds)
         if self.kind == "energy":
-            return f"Produce {self.target:g} Wh together"
+            return f"Produire {target} Wh ensemble"
         if self.kind == "distance":
-            return f"Cover {self._distance()} together"
+            return f"Parcourir {text.distance(self.target)} ensemble"
         if self.kind == "hold":
-            return f"Hold {self.target:g} W together for {self.seconds:g} s"
-        return f"Everyone above {self.target:g} W for {self.seconds:g} s"
+            return f"Tenir {target} W ensemble pendant {seconds} s"
+        return f"Tous au-dessus de {target} W pendant {seconds} s"
 
     def rider_label(self) -> str:
         """Wording for an objective one rider does alone (Squad)."""
+        target, seconds = text.number(self.target), text.number(self.seconds)
         if self.kind == "energy":
-            return f"Produce {self.target:g} Wh"
+            return f"Produire {target} Wh"
         if self.kind == "distance":
-            return f"Cover {self._distance()}"
-        return f"Hold {self.target:g} W for {self.seconds:g} s"
+            return f"Parcourir {text.distance(self.target)}"
+        return f"Tenir {target} W pendant {seconds} s"
 
 
 @dataclass(frozen=True)

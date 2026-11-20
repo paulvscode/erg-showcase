@@ -10,10 +10,6 @@
   }
 
   const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/";
-  const MODULES = [
-    "__init__", "config", "objectives", "presets", "milestones", "energy",
-    "reading", "fake", "room", "demo", "workout", "desk",
-  ];
   const listeners = new Set();
   let app = null;
   let last = null;
@@ -44,7 +40,8 @@
     const py = await loadPyodide({ indexURL: PYODIDE });
     await py.loadPackage("pyyaml");
     py.FS.mkdirTree("/app/erg");
-    for (const name of MODULES) {
+    const modules = JSON.parse(await text("py/modules.json"));
+    for (const name of modules) {
       py.FS.writeFile(`/app/erg/${name}.py`, await text(`py/erg/${name}.py`));
     }
     py.FS.writeFile("/app/showcase_app.py", await text("py/showcase_app.py"));
@@ -89,23 +86,23 @@
   document.addEventListener("DOMContentLoaded", () => {
     const loading = document.createElement("div");
     loading.id = "sc-loading";
-    loading.innerHTML = "Loading the live demo…<small>Starting the simulation in your browser. This takes a few seconds the first time.</small>";
+    loading.innerHTML = "Chargement de la démo…<small>La simulation démarre dans votre navigateur. Quelques secondes la première fois.</small>";
     document.body.append(loading);
     ready.then(
       () => loading.remove(),
-      (err) => { loading.innerHTML = `The demo could not start.<small>${err.message}</small>`; },
+      (err) => { loading.innerHTML = `La démo n’a pas pu démarrer.<small>${err.message}</small>`; },
     );
 
     const drawer = document.createElement("div");
     drawer.id = "sc-drawer";
-    drawer.innerHTML = `<button class="close" aria-label="Close">×</button><iframe title="Start a session"></iframe>`;
+    drawer.innerHTML = `<button class="close" aria-label="Fermer">×</button><iframe title="Lancer une séance"></iframe>`;
     document.body.append(drawer);
     const close = () => drawer.classList.remove("open");
     drawer.querySelector(".close").addEventListener("click", close);
 
     const button = document.createElement("button");
     button.className = "sc-session";
-    button.textContent = "★ Start a session";
+    button.textContent = "★ Lancer une séance";
     button.addEventListener("click", () => {
       drawer.querySelector("iframe").src = "session.html"; // fresh form each time
       drawer.classList.add("open");

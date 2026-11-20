@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Start a Session</title>
+<title>Lancer une séance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap">
@@ -50,29 +50,29 @@
 </head>
 <body>
 <main>
-  <h1>Start a session</h1>
+  <h1>Lancer une séance</h1>
 
   <section class="running" id="running" hidden>
-    <h2 id="running-text">A session is running.</h2>
-    <button class="go stop" id="stop">Stop the session</button>
+    <h2 id="running-text">Une séance est en cours.</h2>
+    <button class="go stop" id="stop">Arrêter la séance</button>
   </section>
 
   <form id="form">
     <div style="display:flex;flex-direction:column;gap:20px">
       <div>
-        <div class="label">Session</div>
+        <div class="label">Séance</div>
         <div class="presets" id="presets"></div>
       </div>
       <div class="duration" id="duration-box">
-        <div class="label">Duration</div>
+        <div class="label">Durée</div>
         <input type="number" id="duration" min="1" max="180" step="1"> <span>minutes</span>
       </div>
       <div>
-        <div class="label">Who's on which machine? Leave a machine empty if nobody uses it.</div>
+        <div class="label">Qui est sur quelle machine ? Laissez vide une machine inutilisée.</div>
         <div id="riders" style="display:flex;flex-direction:column;gap:8px;margin-top:8px"></div>
       </div>
       <div id="error"></div>
-      <button class="go" type="submit" id="start">Start ▶</button>
+      <button class="go" type="submit" id="start">Démarrer ▶</button>
     </div>
   </form>
 </main>
@@ -84,15 +84,15 @@ const api = (path, options) => (window.ergBackend ?? window).fetch(path, options
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const MACHINE = { bike: "BikeErg", row: "RowErg", ski: "SkiErg", run: "AssaultRunner" };
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-const TYPE_LABEL = { training: "Training · ", blitz: "Blitz · max ", squad: "Squad · max " };
+const TYPE_LABEL = { training: "Entraînement · ", blitz: "Blitz · max ", squad: "Squad · max " };
 let presets = [];
 
 // Each machine type has its own list; the group wins when every rider finishes theirs.
 function squadSteps(p) {
   const lists = Object.entries(p.machines).map(([machine, steps]) => `
-    <details><summary>${MACHINE[machine] ?? esc(machine)} · ${steps.length} objectives</summary>
+    <details><summary>${MACHINE[machine] ?? esc(machine)} · ${steps.length} objectifs</summary>
       <ol>${steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol></details>`).join("");
-  return `<p class="squad">Everyone completes their own objectives.</p>${lists}`;
+  return `<p class="squad">Chacun réalise ses propres objectifs.</p>${lists}`;
 }
 let chosen = null;
 
@@ -111,14 +111,14 @@ async function load() {
       <div class="type">${TYPE_LABEL[p.type]}${p.duration_min} min</div>
       <div class="name">${esc(p.name)}</div>
       ${p.type === "squad" ? squadSteps(p) : `<ol>${p.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`}
-      ${p.record_s != null ? `<div class="record">Record ${clock(p.record_s)}</div>` : ""}
+      ${p.record_s != null ? `<div class="record">Record : ${clock(p.record_s)}</div>` : ""}
     </div>`).join("");
   $("riders").innerHTML = setup.ergs.map((e) => `
     <div class="row${e.online ? "" : " offline"}">
-      <div class="machine">${MACHINE[e.machine] ?? esc(e.machine)}<small>${esc(e.id)}${e.online ? "" : " · offline"}</small></div>
-      <input name="name" data-erg="${esc(e.id)}" placeholder="Name" maxlength="24" autocomplete="off">
+      <div class="machine">${MACHINE[e.machine] ?? esc(e.machine)}<small>${esc(e.id)}${e.online ? "" : " · hors ligne"}</small></div>
+      <input name="name" data-erg="${esc(e.id)}" placeholder="Prénom" maxlength="24" autocomplete="off">
       ${e.machine === "run"
-        ? `<input name="weight" data-erg="${esc(e.id)}" type="number" min="30" max="250" placeholder="kg (optional)">`
+        ? `<input name="weight" data-erg="${esc(e.id)}" type="number" min="30" max="250" placeholder="kg (facultatif)">`
         : "<span></span>"}
     </div>`).join("");
   if (presets.length) choose(presets[0].id);
@@ -156,11 +156,11 @@ $("form").addEventListener("submit", async (ev) => {
   $("start").disabled = false;
   if (!res.ok) { $("error").textContent = (await res.json()).detail; return; }
   $("error").textContent = "";
-  showRunning(true, "Starting… watch the screen!");
+  showRunning(true, "Démarrage… regardez l’écran !");
 });
 
 $("stop").addEventListener("click", async () => {
-  if (!confirm("Stop the session now?")) return;
+  if (!confirm("Arrêter la séance maintenant ?")) return;
   await api("/api/session/stop", { method: "POST" });
   load();
 });
@@ -171,8 +171,8 @@ setInterval(async () => {
   const w = state.workout;
   if (!w && !$("running").hidden) { load(); return; }
   if (w) {
-    const phase = { countdown: "Starting…", running: "Running", finished: "Showing results" }[w.phase];
-    showRunning(true, `${w.preset}: ${phase}`);
+    const phase = { countdown: "démarrage…", running: "en cours", finished: "résultats à l’écran" }[w.phase];
+    showRunning(true, `${w.preset} : ${phase}`);
   }
 }, 2000);
 

@@ -8,6 +8,7 @@ import logging
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 
+from erg import text
 from erg.config import Config, Participant
 from erg.energy import EnergyMeter, estimate_running_watts
 from erg.milestones import Session, distance_gain, ladder_status
@@ -16,6 +17,13 @@ from erg.objectives import PERIODS, Objective, RollingBest, period_key, progress
 log = logging.getLogger("erg.room")
 
 CALENDAR_PERIODS = tuple(p for p in PERIODS if p != "all")
+PERIOD_GOAL = {
+    "day": "Objectif du jour",
+    "week": "Objectif de la semaine",
+    "month": "Objectif du mois",
+    "year": "Objectif de l'année",
+    "all": "Objectif de la salle",
+}
 
 
 @dataclass(frozen=True)
@@ -115,7 +123,7 @@ class Room:
 
     def _participant(self, participant_id: str) -> ParticipantState:
         if participant_id not in self.participants:
-            raise ValueError(f"unknown participant {participant_id!r}")
+            raise ValueError(f"Participant inconnu{text.NBSP}: {participant_id}")
         return self.participants[participant_id]
 
     def period_energy(self, period: str, now: float) -> float:
@@ -238,7 +246,7 @@ class Room:
     def assign(self, participant_id: str, erg_id: str, now: float) -> None:
         person = self._participant(participant_id)
         if erg_id not in self.ergs:
-            raise ValueError(f"unknown erg {erg_id!r}")
+            raise ValueError(f"Machine inconnue{text.NBSP}: {erg_id}")
         self.unassign(participant_id, now)
         erg = self.ergs[erg_id]
         if erg.participant_id is not None:
@@ -312,7 +320,9 @@ class Room:
         reached = ladder_status(steps, self.room_best.best).reached
         if reached > self.room_level:
             self.room_level = reached
-            self.highlight(f"⚡ Room {steps[reached - 1]:g} W!", now)
+            self.highlight(
+                text.exclaim(f"⚡ Salle{text.NBSP}: {text.number(steps[reached - 1])} W"), now
+            )
 
     # --- objectives ---------------------------------------------------------
 
@@ -326,17 +336,20 @@ class Room:
             for o in self.objectives("personal"):
                 if o.id not in person.reached and progress(o, self.personal_value(person, o)) >= 1:
                     person.reached.add(o.id)
-                    self.highlight(f"★ {person.info.name}: {o.id}", now, person.erg_id)
+                    message = text.exclaim(f"★ {person.info.name}{text.NBSP}: {o.describe()}")
+                    self.highlight(message, now, person.erg_id)
         for o in self.objectives("team"):
             for team_id, wh in self.team_wh.items():
                 if (o.id, team_id) not in self.reached and progress(o, wh) >= 1:
                     self.reached.add((o.id, team_id))
-                    self.highlight(f"Team {self.teams[team_id].name} reached {o.id}", now)
+                    team = self.teams[team_id].name
+                    self.highlight(text.exclaim(f"Équipe {team}{text.NBSP}: {o.describe()}"), now)
         for o in self.objectives("overall"):
             key = (o.id, period_key(o.period, now))
             if key not in self.reached and progress(o, self.period_energy(o.period, now)) >= 1:
                 self.reached.add(key)
-                self.highlight(f"Gym goal reached: {o.id}", now)
+                message = f"{PERIOD_GOAL[o.period]} atteint{text.NBSP}: {o.describe()}"
+                self.highlight(text.exclaim(message), now)
 
     def _ladders(self, erg: ErgState) -> list[tuple[str, list[float], float]]:
         """(name, steps, session value) for each ladder of this erg's machine."""
@@ -433,6 +446,7 @@ class Room:
             "id": person.info.id,
             "name": person.info.name,
             "team": person.info.team,
+            "team_name": self.teams[person.info.team].name,
             "erg_id": person.erg_id,
             "energy_wh": person.energy_wh,
             "objectives": [
@@ -455,10 +469,8 @@ def _ladder_view(steps: list[float], value: float) -> dict:
 
 def _step_text(ladder: str, step: float) -> str:
     if ladder == "power":
-        return f"⚡ {step:g} W!"
-    if step < 1000:
-        return f"🏁 {step:g} m!"
-    return f"🏁 {step / 1000:g} km!"
+        return text.exclaim(f"⚡ {text.number(step)} W")
+    return text.exclaim(f"🏁 {text.distance(step)}")
 
 
 def _objective_view(objective: Objective, value: float) -> dict:

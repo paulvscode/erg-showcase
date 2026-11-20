@@ -9,6 +9,7 @@ every rider has finished theirs.
 
 from dataclasses import dataclass, field
 
+from erg import text
 from erg.presets import Preset, Step
 from erg.room import Room
 
@@ -185,9 +186,10 @@ class Workout:
                 continue
             room.highlight(f"✓ {cleared.rider_label()}", now, rider.erg_id)
             if track.done:
-                room.highlight(f"★ {rider.name}: all done!", now, rider.erg_id)
+                done = text.exclaim(f"★ {rider.name}{text.NBSP}: objectifs terminés")
+                room.highlight(done, now, rider.erg_id)
         if self.completed:
-            room.highlight("★ Group objective achieved!", now)
+            room.highlight(text.exclaim("★ Objectif collectif atteint"), now)
 
     def _finish(self, room: Room, now: float) -> None:
         self.final_riders = self._rider_views(room, now)

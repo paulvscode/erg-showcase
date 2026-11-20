@@ -44,7 +44,7 @@ class Showcase:
         except SessionError as exc:
             return json.dumps({"status": exc.status, "body": {"detail": str(exc)}})
         if result is None:
-            return json.dumps({"status": 404, "body": {"detail": "Not found"}})
+            return json.dumps({"status": 404, "body": {"detail": "Introuvable"}})
         return json.dumps({"status": 200, "body": result})
 
     def _route(self, method: str, path: str, body: dict) -> dict | None:

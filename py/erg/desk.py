@@ -7,6 +7,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from erg import text
 from erg.config import Config
 from erg.presets import Preset
 from erg.room import Room
@@ -76,21 +77,21 @@ class SessionDesk:
         self, preset_id: str, duration_min: float | None, entries: list[RiderEntry], now: float
     ) -> None:
         if self.workout is not None:
-            raise SessionError(409, "A session is already running.")
+            raise SessionError(409, "Une séance est déjà en cours.")
         preset = self.presets.get(preset_id)
         if preset is None:
-            raise SessionError(400, "Unknown session type.")
+            raise SessionError(400, "Type de séance inconnu.")
         entries = [e for e in entries if e.name.strip()]
         if not entries:
-            raise SessionError(400, "Enter at least one name.")
+            raise SessionError(400, "Saisissez au moins un prénom.")
         if len({e.erg_id for e in entries}) != len(entries):
-            raise SessionError(400, "One name per machine.")
+            raise SessionError(400, "Un seul prénom par machine.")
         riders = [self._rider(preset, e) for e in entries]
         duration = preset.duration_min
         if preset.type == "training" and duration_min:
             duration = duration_min
         if not DURATION_RANGE_MIN[0] <= duration <= DURATION_RANGE_MIN[1]:
-            raise SessionError(400, "Duration must be 1 to 180 minutes.")
+            raise SessionError(400, "La durée doit être comprise entre 1 et 180 minutes.")
 
         for rider in riders:
             self.room.set_rider_weight(rider.erg_id, rider.weight_kg)
@@ -108,22 +109,23 @@ class SessionDesk:
     def _rider(self, preset: Preset, entry: RiderEntry) -> Rider:
         erg = self.room.ergs.get(entry.erg_id)
         if erg is None:
-            raise SessionError(400, f"Unknown machine {entry.erg_id}.")
+            raise SessionError(400, f"Machine inconnue{text.NBSP}: {entry.erg_id}.")
         weight = entry.weight_kg
         if weight is not None and not WEIGHT_RANGE_KG[0] <= weight <= WEIGHT_RANGE_KG[1]:
-            raise SessionError(400, f"Weight for {entry.name} looks wrong.")
+            raise SessionError(400, f"Le poids de {entry.name} semble incorrect.")
         track = None
         if preset.type == "squad":
             steps = preset.machines.get(erg.machine)
             if not steps:
                 machine = MACHINE_NAMES.get(erg.machine, erg.machine)
-                raise SessionError(400, f"This session has no objectives for the {machine}.")
+                message = f"Cette séance n'a pas d'objectifs pour la machine {machine}."
+                raise SessionError(400, message)
             track = Track(steps)
         return Rider(entry.erg_id, entry.name.strip()[:NAME_MAX], weight, track=track)
 
     def stop(self) -> None:
         if self.workout is None:
-            raise SessionError(409, "No session is running.")
+            raise SessionError(409, "Aucune séance en cours.")
         log.info("session %s stopped", self.workout.preset.id)
         self.cancel()
 
