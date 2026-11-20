@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Erg Power</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap">
+<style>
+  /* Palette and type from the LH Sport Club site. */
+  :root {
+    --bg: #000000; --panel: #111111; --line: #29282d; --text: #ffffff; --muted: #9a99a0;
+    --red: #e30613; --gold: #c9a54e; --off: #3a3a3f;
+    --display: "Racing Sans One", "Arial Black", sans-serif;
+    --body: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; padding: 1.6vw; background: var(--bg); color: var(--text);
+    font-family: var(--body); font-style: oblique; font-weight: 300;
+    display: flex; flex-direction: column; gap: 1.4vw;
+  }
+  .panel { background: var(--panel); padding: 1.3vw 1.8vw; border-left: .35vw solid var(--red); }
+  .label { color: var(--muted); font-size: 1.15vw; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+  .bar { height: 1vw; min-height: 6px; background: var(--line); overflow: hidden; }
+  .bar > div { height: 100%; background: var(--red); width: 0; transition: width .8s ease; }
+  .bar.done > div { background: var(--gold); }
+
+  .top { display: grid; grid-template-columns: 1fr 1.2fr 1.6fr; gap: 1.4vw; }
+  .big { font-family: var(--display); font-style: normal; font-size: 5.6vw; line-height: 1.05; }
+  .big small { font-size: 2vw; color: var(--red); margin-left: .25em; }
+  .today .bar { margin-top: .8vw; }
+  .today .sub { color: var(--muted); font-size: 1.2vw; margin-top: .5vw; }
+  .goals { display: flex; flex-direction: column; justify-content: center; gap: .9vw; }
+  .goal { display: grid; grid-template-columns: 9vw 1fr 11vw; align-items: center; gap: 1vw; font-size: 1.4vw; }
+  .goal .name { color: var(--muted); }
+  .goal .value { text-align: right; font-family: var(--display); font-style: normal; font-size: 1.6vw; }
+  .goal .value small { color: var(--muted); font-family: var(--body); font-style: oblique; font-size: 1.2vw; }
+
+  .ergs { flex: 1; display: grid; grid-template-columns: repeat(var(--cols, 5), 1fr); gap: 1.2vw; }
+  .erg {
+    position: relative; overflow: hidden; min-width: 0;
+    background: var(--panel); padding: 1.2vw 1.4vw;
+    border-top: .5vw solid var(--red); transition: box-shadow .3s;
+  }
+  .erg .content { display: flex; flex-direction: column; height: 100%; }
+  .erg.party { box-shadow: 0 0 0 .3vw var(--red), 0 0 4vw #e3061388; }
+  .erg .celebrate {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 1vw; font-family: var(--display); font-style: normal;
+    font-size: 3.6vw; line-height: 1.1; color: var(--text); background: #e30613f0;
+    opacity: 0; pointer-events: none;
+  }
+  .erg .celebrate.show { animation: pop 2.6s ease forwards; }
+  @keyframes pop {
+    0% { opacity: 0; transform: scale(.6) skewX(-8deg); }
+    12% { opacity: 1; transform: scale(1.08) skewX(-8deg); }
+    20% { transform: scale(1) skewX(0); }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: scale(1); }
+  }
+  .ladder { margin-top: 1vw; }
+  .ladder .row { display: flex; justify-content: space-between; align-items: baseline; gap: .5vw; font-size: 1.05vw; color: var(--muted); white-space: nowrap; }
+  .ladder .row b { color: var(--text); font-family: var(--display); font-style: normal; font-weight: 400; font-size: 1.4vw; }
+  .ladder .lvl { color: var(--red); font-family: var(--display); font-style: normal; font-size: 1.4vw; margin-left: .3em; }
+  .ladder .max { color: var(--gold); font-family: var(--display); font-style: normal; font-size: 1.4vw; }
+  .dots { display: flex; gap: .3vw; margin-top: .4vw; }
+  .dot { flex: 1; height: 1.1vw; min-height: 6px; background: var(--line); position: relative; overflow: hidden; transform: skewX(-15deg); }
+  .dot.done { background: var(--red); }
+  .dot > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--text); transition: width .8s ease; }
+  .erg.offline { opacity: .35; border-top-color: var(--off); }
+  .erg .head { display: flex; justify-content: space-between; color: var(--muted); font-size: 1.15vw; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+  .erg .head .machine { text-transform: none; letter-spacing: .04em; }
+  .erg .who { font-family: var(--display); font-style: normal; font-size: 2.5vw; margin: .3vw 0 .1vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .erg .who.free { color: var(--muted); }
+  .erg .watts { font-family: var(--display); font-style: normal; font-size: 6.2vw; line-height: 1; }
+  .erg .watts small { font-size: 2.2vw; color: var(--red); margin-left: .15em; }
+  .erg .watts.speed { font-size: 5vw; white-space: nowrap; }
+  .erg .watts.speed small { font-size: 1.7vw; }
+  .erg .offline-text { font-family: var(--display); font-style: normal; font-size: 2.8vw; color: var(--muted); margin: 1.2vw 0; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: .9vw 1vw; margin: 1.3vw 0 0; }
+  .stat .v { font-family: var(--display); font-style: normal; font-size: 2vw; line-height: 1.1; }
+  .stat .v small { font-family: var(--body); font-style: oblique; font-size: 1vw; color: var(--muted); margin-left: .25em; }
+  .stat .k { font-size: .9vw; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+
+  #banner {
+    position: fixed; left: 50%; top: 45%; transform: translate(-50%, -50%) scale(.9);
+    background: var(--red); color: var(--text); font-family: var(--display); font-size: 4.2vw;
+    padding: 1.8vw 4vw; opacity: 0; pointer-events: none;
+    transition: opacity .4s, transform .4s; text-align: center; box-shadow: 0 2vw 6vw #000c;
+  }
+  #banner.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  #controls {
+    position: fixed; right: 1.2vw; bottom: 2.2vw; z-index: 10;
+    display: flex; align-items: center; gap: .5vw; padding: .6vw .8vw;
+    background: #111111ee; border: 2px solid var(--red); box-shadow: 0 1vw 3vw #000c;
+  }
+  #controls[hidden] { display: none; }
+  #controls .tag { font-family: var(--display); color: var(--red); font-size: 1.2vw; margin-right: .3vw; }
+  #controls button {
+    font-family: var(--display); font-size: 1.05vw; color: var(--text); cursor: pointer;
+    background: var(--line); border: 0; padding: .5vw .9vw; min-height: 32px;
+  }
+  #controls button:hover { background: #3a3940; }
+  #controls button.on { background: var(--red); }
+  /* Group session */
+  .top.session { grid-template-columns: 1fr 2.8fr; }
+  .top[hidden] { display: none; }
+  .clock { font-family: var(--display); font-style: normal; font-size: 6vw; line-height: 1; }
+  .objective .what { font-family: var(--display); font-style: normal; font-size: 2.6vw; margin: .3vw 0 .8vw; }
+  .objective .meter { display: flex; align-items: center; gap: 1.2vw; }
+  .objective .meter .bar { flex: 1; height: 2vw; }
+  .objective .pct { font-family: var(--display); font-style: normal; font-size: 3.4vw; min-width: 8vw; text-align: right; }
+  .objective .sub, .session .sub { color: var(--muted); font-size: 1.2vw; margin-top: .5vw; }
+  .objective .splits { color: var(--gold); }
+  .erg.out { opacity: .3; }
+  .share { margin-bottom: .6vw; }
+  .share .row { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: 1.05vw; }
+  .share .row b { font-family: var(--display); font-style: normal; font-size: 2.2vw; color: var(--gold); }
+  .share .bar { height: .7vw; margin-top: .3vw; }
+  .share .bar > div { background: var(--gold); }
+  .share.mine .row { white-space: normal; gap: .5vw; }
+  .share.mine .row b { font-size: 1.6vw; margin-right: .2em; }
+  .share.mine .row span:first-child { color: var(--text); font-size: 1.15vw; }
+  .approx { color: var(--muted); font-size: .5em; margin-right: .1em; }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 20; background: #000000f2;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  }
+  .overlay[hidden] { display: none; }
+  .overlay .count { font-family: var(--display); font-size: 26vw; line-height: 1; color: var(--text); }
+  .overlay .count.go { color: var(--red); }
+  .overlay .hint { font-family: var(--display); font-size: 3vw; color: var(--muted); margin-top: 1vw; }
+  .results h1 { font-family: var(--display); font-weight: 400; font-size: 4vw; margin: 0; }
+  .results .headline { font-family: var(--display); font-size: 4.6vw; color: var(--red); margin: .5vw 4vw; }
+  .results .record { font-family: var(--display); font-size: 2.6vw; color: var(--gold); min-height: 3vw; }
+  .results table { margin-top: 2vw; border-collapse: collapse; font-size: 1.8vw; }
+  .results td, .results th { padding: .5vw 1.6vw; text-align: right; }
+  .results th { color: var(--muted); font-size: 1.1vw; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+  .results td:nth-child(2) { text-align: left; font-family: var(--display); font-style: normal; }
+  .results tr:first-child td { color: var(--gold); }
+
+  #status { position: fixed; right: 1vw; bottom: .5vw; color: var(--muted); font-size: .9vw; }
+
+  @media (max-width: 700px) {
+    body { padding: 16px; gap: 16px; }
+    .top { grid-template-columns: 1fr; }
+    .ergs { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+<script src="static-demo.js"></script>
+</head>
+<body>
+  <section class="top" id="normal-top">
+    <div class="panel">
+      <div class="label">Room power</div>
+      <div class="big" id="watts">0<small>W</small></div>
+      <div id="room-ladder"></div>
+    </div>
+    <div class="panel today">
+      <div class="label">Today</div>
+      <div class="big" id="today">0<small>Wh</small></div>
+      <div id="today-goal"></div>
+    </div>
+    <div class="panel goals" id="goals"></div>
+  </section>
+  <section class="top session" id="session-top" hidden>
+    <div class="panel">
+      <div class="label" id="s-name">Session</div>
+      <div class="clock" id="s-clock">0:00</div>
+      <div class="sub" id="s-clock-sub"></div>
+    </div>
+    <div class="panel objective">
+      <div class="label" id="s-step"></div>
+      <div class="what" id="s-what"></div>
+      <div class="meter"><div class="bar" id="s-bar"><div></div></div><div class="pct" id="s-pct"></div></div>
+      <div class="sub" id="s-sub"></div>
+    </div>
+  </section>
+  <section class="ergs" id="ergs"></section>
+  <div class="overlay" id="countdown" hidden>
+    <div class="count" id="count-num"></div>
+    <div class="hint" id="count-hint"></div>
+  </div>
+  <div class="overlay results" id="results" hidden></div>
+  <div id="banner"></div>
+  <div id="controls" hidden>
+    <span class="tag">DEMO</span>
+    <button data-act="start">▶ Start</button>
+    <button data-act="pause">⏸ Pause</button>
+    <button data-act="reset-objectives">↺ Reset objectives</button>
+    <button data-act="reset">⟲ Reset</button>
+  </div>
+  <div id="status">connecting…</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+// The static showcase runs the server inside the page and provides ergBackend.
+const api = (path, options) => (window.ergBackend ?? window).fetch(path, options);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const int = (n) => Math.round(n).toLocaleString("en-US");
+
+const MACHINE = { bike: "BikeErg", row: "RowErg", ski: "SkiErg", run: "AssaultRunner" };
+const PERIOD = { day: "Today", week: "This week", month: "This month", year: "This year", all: "All time" };
+
+// [number, unit] so the unit can be styled smaller.
+function energy(wh) {
+  if (wh < 1000) return [int(wh), "Wh"];
+  return [(wh / 1000).toFixed(wh < 10000 ? 2 : 1), "kWh"];
+}
+
+function bar(p) {
+  return `<div class="bar${p >= 1 ? " done" : ""}"><div style="width:${(p * 100).toFixed(1)}%"></div></div>`;
+}
+
+// Time to cover `metres` at `speed` m/s, as m:ss.
+function pace(speed, metres) {
+  if (!speed || speed < 0.1) return "—";
+  const s = metres / speed;
+  return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+}
+
+const kmh = (speed) => (speed != null ? (speed * 3.6).toFixed(1) : "—");
+
+function stat(value, unit, key) {
+  return `<div class="stat"><div class="v">${value}${unit ? `<small>${unit}</small>` : ""}</div><div class="k">${key}</div></div>`;
+}
+
+function stats(e) {
+  const d = e.details || {};
+  let items;
+  if (e.machine === "run") {
+    items = [stat(pace(d.speed_mps, 1000), "/km", "Pace")];
+    // Without power, speed is already the big number.
+    if (e.has_power) items.unshift(stat(kmh(d.speed_mps), "km/h", "Speed"));
+  } else if (e.machine === "bike") {
+    items = [stat(e.cadence, "rpm", "Cadence"), stat(kmh(d.speed_mps), "km/h", "Speed")];
+  } else {
+    items = [stat(e.cadence, "spm", "Cadence"), stat(pace(d.speed_mps, 500), "/500m", "Pace")];
+  }
+  items.push(stat(d.calories ?? "—", "kcal", "Calories"));
+  if (d.heart_rate != null) items.push(stat(d.heart_rate, "bpm", "♥ Heart"));
+  return `<div class="stats">${items.join("")}</div>`;
+}
+
+function km(m) {
+  return m < 1000 ? `${Math.round(m)} m` : `${+(m / 1000).toFixed(2)} km`;
+}
+
+// One segment per step: green when done, the current one fills up in orange.
+function ladder(kind, l) {
+  const power = kind === "power";
+  const fmt = power ? (v) => `${int(v)} W` : km;
+  let right = `<span><b>${fmt(l.value)}</b> / ${fmt(l.next)}</span>`;
+  if (l.measuring) right = `<span>measuring…</span>`;
+  else if (l.next == null) right = `<span class="max">ALL DONE ★</span>`;
+  const segments = l.steps.map((_, i) => {
+    if (i < l.reached) return `<div class="dot done"></div>`;
+    const fill = i === l.reached ? l.progress * 100 : 0;
+    return `<div class="dot"><i style="width:${fill.toFixed(1)}%"></i></div>`;
+  }).join("");
+  return `<div class="ladder">
+    <div class="row"><span>${power ? "⚡" : "🏁"}<span class="lvl">Level ${l.reached}</span></span>${right}</div>
+    <div class="dots">${segments}</div>
+  </div>`;
+}
+
+function tileContent(e, rider) {
+  const name = rider ? rider.name : e.participant?.name;
+  const head = `<div class="head"><span class="machine">${MACHINE[e.machine] ?? esc(e.machine)}</span><span>${esc(e.id)}</span></div>`;
+  const who = `<div class="who${name ? "" : " free"}">${name ? esc(name) : "Free"}</div>`;
+  if (!e.online) return `${head}${who}<div class="offline-text">Offline</div>`;
+  const ladders = e.session
+    ? ["power", "distance"].filter((k) => e.session[k]).map((k) => ladder(k, e.session[k])).join("")
+    : "";
+  // A treadmill that never reports power shows its speed as the big number.
+  const showSpeed = !e.has_power && e.machine === "run";
+  const big = showSpeed
+    ? `${kmh(e.details?.speed_mps)}<small>km/h</small>`
+    : `${e.estimated ? `<span class="approx">≈</span>` : ""}${int(e.watts)}<small>W</small>`;
+  const share = rider ? riderStrip(rider) : "";
+  return `${head}${who}${share}
+    <div class="watts${showSpeed ? " speed" : ""}">${big}</div>
+    ${ladders}
+    ${stats(e)}`;
+}
+
+// Tiles are created once and updated in place, so a running celebration isn't restarted.
+const tiles = new Map();
+
+function renderErgs(ergs, workout) {
+  const riders = new Map((workout?.riders ?? []).map((r) => [r.erg_id, r]));
+  const box = $("ergs");
+  box.style.setProperty("--cols", Math.min(Math.max(ergs.length, 1), 5));
+  for (const e of ergs) {
+    let el = tiles.get(e.id);
+    if (!el) {
+      el = document.createElement("div");
+      el.innerHTML = `<div class="content"></div><div class="celebrate"></div>`;
+      box.appendChild(el);
+      tiles.set(e.id, el);
+    }
+    el.classList.add("erg");
+    el.classList.toggle("offline", !e.online);
+    el.classList.toggle("out", Boolean(workout) && !riders.has(e.id));
+    el.querySelector(".content").innerHTML = tileContent(e, riders.get(e.id));
+  }
+}
+
+const tileQueues = new Map();
+
+function celebrate(ergId, text) {
+  const queue = tileQueues.get(ergId) ?? [];
+  tileQueues.set(ergId, queue);
+  queue.push(text);
+  if (queue.length === 1) playTile(ergId);
+}
+
+function playTile(ergId) {
+  const queue = tileQueues.get(ergId);
+  const el = tiles.get(ergId);
+  if (!queue.length || !el) return;
+  const box = el.querySelector(".celebrate");
+  box.textContent = queue[0];
+  box.classList.remove("show");
+  void box.offsetWidth; // restart the animation
+  box.classList.add("show");
+  el.classList.add("party");
+  setTimeout(() => {
+    el.classList.remove("party");
+    queue.shift();
+    playTile(ergId);
+  }, 2700);
+}
+
+function render(s) {
+  $("watts").innerHTML = `${int(s.total_watts)}<small>W</small>`;
+  $("room-ladder").innerHTML = s.room_ladder ? ladder("power", s.room_ladder) : "";
+  const [n, u] = energy(s.today_wh);
+  $("today").innerHTML = `${n}<small>${u}</small>`;
+
+  const daily = s.overall.find((o) => o.period === "day");
+  $("today-goal").innerHTML = daily
+    ? `${bar(daily.progress)}<div class="sub">${Math.floor(daily.progress * 100)}% of today's goal · ${energy(daily.target).join(" ")}</div>`
+    : "";
+  const rows = s.overall.filter((o) => o !== daily).map((o) =>
+    `<div class="goal"><span class="name">${PERIOD[o.period]}</span>${bar(o.progress)}
+      <span class="value">${energy(o.value)[0]} <small>/ ${energy(o.target).join(" ")}</small></span></div>`
+  );
+  $("goals").innerHTML = `<div class="label">Gym goals</div>${rows.join("")}`;
+
+  renderErgs(s.ergs, s.workout);
+  renderWorkout(s.workout);
+  showHighlights(s.highlights);
+  renderControls(s.demo);
+}
+
+const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+let lastPhase = null;
+let lastStep = null;
+let goUntil = 0;
+
+function objectiveText(o) {
+  if (o.kind === "energy") return `${o.value.toFixed(1)} / ${o.goal} Wh`;
+  if (o.kind === "distance") return `${km(o.value)} / ${km(o.goal)}`;
+  return `held ${Math.floor(o.value)} / ${o.goal} s`;
+}
+
+// What a rider sees on their tile during a session: their share of the energy,
+// or in a Squad their own current objective.
+function riderStrip(r) {
+  if (r.step_count == null) {
+    return `<div class="share"><div class="row"><span><b>${Math.round(r.share * 100)}%</b> of the session</span>
+      <span>${r.energy_wh.toFixed(1)} Wh</span></div>${bar(r.share)}</div>`;
+  }
+  const o = r.objective;
+  if (!o) {
+    return `<div class="share"><div class="row"><span><b>★ ${r.step_count}/${r.step_count}</b> all done</span>
+      <span>${r.finished_s != null ? clock(r.finished_s) : ""}</span></div>${bar(1)}</div>`;
+  }
+  return `<div class="share mine"><div class="row"><span><b>${r.steps_done + 1}/${r.step_count}</b> ${esc(o.label)}</span>
+    <span>${Math.floor(o.progress * 100)}%</span></div>${bar(o.progress)}</div>`;
+}
+
+function setBar(id, progress, step) {
+  const fill = $(id).firstElementChild;
+  // A new objective starts from empty at once instead of sliding back from full.
+  fill.style.transition = step !== lastStep ? "none" : "";
+  $(id).className = `bar${progress >= 1 ? " done" : ""}`;
+  fill.style.width = `${(progress * 100).toFixed(1)}%`;
+}
+
+function renderWorkout(w) {
+  $("normal-top").hidden = Boolean(w);
+  $("session-top").hidden = !w;
+  // "GO!" stays up a moment after the countdown ends.
+  if (lastPhase === "countdown" && w?.phase === "running") goUntil = Date.now() + 1500;
+  lastPhase = w?.phase ?? null;
+  const counting = w?.phase === "countdown";
+  const go = Date.now() < goUntil;
+  $("countdown").hidden = !(counting || go);
+  if (counting || go) {
+    $("count-num").textContent = counting ? Math.ceil(w.countdown_s) : "GO!";
+    $("count-num").classList.toggle("go", !counting);
+    $("count-hint").textContent = counting ? w.preset : "";
+  }
+  $("results").hidden = w?.phase !== "finished";
+  if (!w) return;
+  if (w.phase === "finished") { renderResults(w); return; }
+
+  const race = w.type !== "training";
+  $("s-name").textContent = w.preset;
+  $("s-clock").textContent = clock(race ? w.elapsed_s : w.remaining_s);
+  $("s-clock-sub").textContent = race
+    ? (w.record_s != null ? `Record ${clock(w.record_s)}` : "No record yet: set one!")
+    : "remaining";
+
+  if (w.group) {
+    const g = w.group;
+    $("s-step").textContent = "Group objective";
+    $("s-what").textContent = g.riders_done === g.rider_count
+      ? "Achieved ★"
+      : "Everyone completes their objectives";
+    setBar("s-bar", g.progress, null);
+    $("s-pct").textContent = `${Math.floor(g.progress * 100)}%`;
+    $("s-sub").textContent = `${w.steps_done} / ${w.step_count} objectives · ${g.riders_done} / ${g.rider_count} riders finished`;
+    return;
+  }
+  const o = w.objective;
+  $("s-step").textContent = o ? `Objective ${w.steps_done + 1} / ${w.step_count}` : `${w.step_count} / ${w.step_count} objectives`;
+  $("s-what").textContent = o ? o.label : "All objectives done ★";
+  const progress = o ? o.progress : 1;
+  setBar("s-bar", progress, w.steps_done);
+  lastStep = w.steps_done;
+  $("s-pct").textContent = `${Math.floor(progress * 100)}%`;
+  const splits = w.splits.map((s, i) => `✓${i + 1} ${clock(s.at_s)}`).join(" · ");
+  $("s-sub").innerHTML = [o ? objectiveText(o) : "", splits ? `<span class="splits">${splits}</span>` : ""]
+    .filter(Boolean).join(" — ");
+}
+
+function renderResults(w) {
+  const squad = w.type === "squad";
+  let headline = `${w.steps_done} / ${w.step_count} objectives`;
+  if (w.type === "blitz" && w.completed) headline = `Done in ${clock(w.elapsed_s)}`;
+  if (squad && w.completed) headline = `Group objective achieved in ${clock(w.elapsed_s)}`;
+  if (w.type === "training") headline += ` · ${w.total_wh.toFixed(1)} Wh`;
+  let record = "";
+  if (w.new_record) record = "★ NEW RECORD! ★";
+  else if (w.type !== "training" && w.record_s != null) record = `Record ${clock(w.record_s)}`;
+  const order = squad
+    ? (a, b) => b.steps_done - a.steps_done || (a.finished_s ?? 1e9) - (b.finished_s ?? 1e9)
+    : (a, b) => b.energy_wh - a.energy_wh;
+  const rows = [...w.riders].sort(order).map((r, i) => {
+    const first = squad
+      ? `<td>${r.steps_done}/${r.step_count}</td><td>${r.finished_s != null ? clock(r.finished_s) : "—"}</td>`
+      : `<td>${Math.round(r.share * 100)}%</td>`;
+    return `<tr><td>${i + 1}</td><td>${esc(r.name)}</td>${first}
+      <td>${r.energy_wh.toFixed(1)} Wh</td><td>${int(r.avg_w)} W</td><td>${km(r.distance_m)}</td></tr>`;
+  }).join("");
+  const heads = squad ? "<th>Objectives</th><th>Finished</th>" : "<th>Share</th>";
+  $("results").innerHTML = `<h1>${esc(w.preset)}</h1>
+    <div class="headline">${headline}</div><div class="record">${record}</div>
+    <table><tr><th></th><th></th>${heads}<th>Energy</th><th>Avg power</th><th>Distance</th></tr>${rows}</table>`;
+}
+
+// Demo controls: only shown when the server runs with --demo.
+function renderControls(demo) {
+  $("controls").hidden = !demo;
+  if (!demo) return;
+  $("controls").querySelector('[data-act="start"]').classList.toggle("on", demo.running);
+  $("controls").querySelector('[data-act="pause"]').classList.toggle("on", !demo.running);
+}
+
+$("controls").addEventListener("click", (ev) => {
+  const button = ev.target.closest("button");
+  if (button?.dataset.act) api(`/api/demo/${button.dataset.act}`, { method: "POST" });
+});
+
+const seen = new Set();
+const queue = [];
+let showing = false;
+const highlightKey = (h) => `${h.text}|${h.ts}|${h.erg_id ?? ""}`;
+
+function showHighlights(list) {
+  for (const h of list) {
+    const key = highlightKey(h);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (h.erg_id) celebrate(h.erg_id, h.text);
+    else queue.push(h.text);
+  }
+  if (!showing) nextBanner();
+}
+
+function nextBanner() {
+  const text = queue.shift();
+  if (!text) { showing = false; return; }
+  showing = true;
+  $("banner").textContent = "🎉 " + text;
+  $("banner").classList.add("show");
+  setTimeout(() => { $("banner").classList.remove("show"); setTimeout(nextBanner, 500); }, 3500);
+}
+
+let firstState = true;
+
+function onState(s) {
+  // Highlights already on screen when the page loads are old news.
+  if (firstState) { s.highlights.forEach((h) => seen.add(highlightKey(h))); firstState = false; }
+  render(s);
+}
+
+function connect() {
+  if (window.ergBackend) {
+    window.ergBackend.subscribe(onState);
+    $("status").textContent = "live";
+    return;
+  }
+  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/dashboard`);
+  ws.onopen = () => { $("status").textContent = "live"; };
+  ws.onmessage = (ev) => onState(JSON.parse(ev.data));
+  ws.onclose = () => { $("status").textContent = "reconnecting…"; setTimeout(connect, 1000); };
+}
+connect();
+</script>
+</body>
+</html>
