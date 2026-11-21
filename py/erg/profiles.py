@@ -18,7 +18,6 @@ class ProfileBook:
         self.config = config
         self.store = store
         self.levels = config.levels
-        self.machine_of = {erg.id: erg.machine for erg in config.all_ergs()}
 
     # --- members --------------------------------------------------------------
 
@@ -53,61 +52,67 @@ class ProfileBook:
         self.store.add_awards(member_id, ts, awards)
         return awards
 
-    def record_performance(self, p: m.Performance) -> list[m.Award]:
-        awards = m.session_awards(self.store.performances(p.member_id), p)
-        self.store.add_performance(p)
-        self.store.add_awards(p.member_id, p.ts, awards)
+    def record_blocks(self, blocks: list[m.Performance]) -> list[m.Award]:
+        """Save one member's session (one Performance per block) and award its badges."""
+        if not blocks:
+            return []
+        member_id = blocks[0].member_id
+        awards = m.session_awards(self.store.performances(member_id), blocks)
+        for block in blocks:
+            self.store.add_performance(block)
+        self.store.add_awards(member_id, blocks[0].ts, awards)
         return awards
 
-    def record_session(self, workout: Workout, view: dict) -> dict[str, list[str]]:
-        """Save every member's result from a finished session; return badges per erg."""
-        preset = workout.preset
+    def record_session(self, workout: Workout, view: dict) -> dict[int, list[str]]:
+        """Save every member's result from a finished session; return badges per rider."""
+        fmt = workout.fmt
         ts = workout.starts_at
-        won: dict[str, list[str]] = {}
-        for rider, result in zip(workout.riders, view["riders"], strict=True):
+        won: dict[int, list[str]] = {}
+        for index, rider in enumerate(workout.riders):
             if rider.member_id is None:
                 continue
-            machine = self.machine_of[rider.erg_id]
-            if rider.track:
-                done, count, completed = rider.track.index, len(rider.track.steps), rider.track.done
-            else:
-                done, count = view["steps_done"], view["step_count"]
-                completed = count > 0 and done == count
-            performance = m.Performance(
-                member_id=rider.member_id,
-                ts=ts,
-                preset=preset.name,
-                session_type=preset.type,
-                machine=machine,
-                minutes=view["elapsed_s"] / 60,
-                energy_wh=result["energy_wh"],
-                avg_w=result["avg_w"],
-                distance_m=result["distance_m"],
-                steps_done=done,
-                step_count=count,
-                completed=completed,
-                score=self.score(rider.member_id, machine, preset.format, result["avg_w"], ts),
-            )
-            awards = self.record_performance(performance)
+            blocks, efforts = [], []
+            for b, result in enumerate(workout.block_results(rider)):
+                target = rider.targets[b]
+                start, end = rider.distance.get(b, [0.0, 0.0])
+                blocks.append(
+                    m.Performance(
+                        member_id=rider.member_id,
+                        ts=ts,
+                        preset=fmt.name,
+                        session_type=fmt.kind,
+                        machine=rider.machines[b],
+                        minutes=fmt.efforts * fmt.effort_s / 60,
+                        energy_wh=workout.block_energy_wh(rider, b),
+                        avg_w=result.average_w,
+                        distance_m=end - start,
+                        steps_done=result.succeeded,
+                        step_count=fmt.efforts,
+                        completed=result.rewarded,
+                        score=result.average_w / target if target else None,
+                    )
+                )
+                efforts += [
+                    (rider.member_id, ts, fmt.id, b, e, rider.machines[b], watts, target)
+                    for e, watts in enumerate(result.efforts_w)
+                ]
+            awards = self.record_blocks(blocks)
+            self.store.add_efforts(efforts)
             # A rider who barely moved didn't take the test: no level from it.
-            valid_test = WATTS_RANGE[0] <= result["avg_w"] <= WATTS_RANGE[1]
-            if preset.type == "test" and machine in LEVEL_MACHINES and valid_test:
-                awards += self.record_test(rider.member_id, machine, result["avg_w"], ts)
+            machine, average_w = rider.machines[0], workout.average_w(rider)
+            valid_test = WATTS_RANGE[0] <= average_w <= WATTS_RANGE[1]
+            if fmt.is_test and machine in LEVEL_MACHINES and valid_test:
+                awards += self.record_test(rider.member_id, machine, average_w, ts)
             if awards:
-                won[rider.erg_id] = [a.label() for a in awards]
+                won[index] = [a.label() for a in awards]
         return won
 
-    def score(
-        self, member_id: str, machine: str, format_id: str | None, avg_w: float, ts: float
-    ) -> float | None:
-        """Average watts ÷ the member's level target for this format, so every level counts."""
-        if format_id is None:
+    def target(self, member_id: str, machine: str, kind: str, now: float) -> float | None:
+        """The member's target watts for a format kind on a machine, or None without a level."""
+        if machine not in LEVEL_MACHINES or kind not in FORMAT_NAMES:
             return None
-        tests = self.store.tests(member_id)
-        test = m.current_levels(tests, ts, self.levels.window_s).get(machine)
-        if test is None:
-            return None
-        return avg_w / self.levels.get(test.level).target_watts(format_id)
+        test = m.current_levels(self.store.tests(member_id), now, self.levels.window_s).get(machine)
+        return self.levels.get(test.level).target_watts(kind) if test else None
 
     # --- pages ------------------------------------------------------------------
 
@@ -156,7 +161,7 @@ class ProfileBook:
             ],
             "records": m.records(history),
             "totals": {
-                "sessions": len(history),
+                "sessions": len({p.ts for p in history}),  # a session has one row per block
                 "energy_kj": sum(p.energy_wh for p in history) * m.KJ_PER_WH,
                 "distance_m": sum(p.distance_m for p in history),
             },

@@ -26,18 +26,13 @@
   .preset.on { border-color: var(--red); }
   .preset .name { font-family: var(--display); font-size: 20px; }
   .preset .type { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--red); }
-  .preset ol { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.4; }
-  .preset .record { color: var(--gold); font-size: 13px; margin-top: 6px; }
   .preset .squad { margin: 6px 0; color: var(--muted); font-size: 13px; }
-  .preset summary { font-size: 13px; cursor: pointer; padding: 3px 0; }
   .row { display: grid; grid-template-columns: 1fr 1.6fr .9fr; gap: 8px; align-items: center; background: var(--panel); padding: 10px 12px; border-left: 4px solid var(--red); }
   .row.offline { border-left-color: var(--line); }
   .row .machine { font-weight: 700; }
   .row .machine small { display: block; color: var(--muted); font-weight: 400; }
   input { width: 100%; min-width: 0; font-size: 16px; padding: 10px; background: #000; color: var(--text); border: 1px solid var(--line); }
   input:focus { outline: 2px solid var(--red); border-color: transparent; }
-  .duration { display: flex; gap: 10px; align-items: center; }
-  .duration input { width: 100px; }
   button.go { font-family: var(--display); font-size: 24px; color: var(--text); background: var(--red); border: 0; padding: 14px; cursor: pointer; }
   button.go:disabled { opacity: .5; cursor: default; }
   button.stop { background: var(--line); }
@@ -63,12 +58,8 @@
         <div class="label">Séance</div>
         <div class="presets" id="presets"></div>
       </div>
-      <div class="duration" id="duration-box">
-        <div class="label">Durée</div>
-        <input type="number" id="duration" min="1" max="180" step="1"> <span>minutes</span>
-      </div>
       <div>
-        <div class="label">Qui est sur quelle machine ? Laissez vide une machine inutilisée.</div>
+        <div class="label" id="riders-label"></div>
         <div id="riders" style="display:flex;flex-direction:column;gap:8px;margin-top:8px"></div>
       </div>
       <div id="error"></div>
@@ -84,49 +75,38 @@ const $ = (id) => document.getElementById(id);
 const api = (path, options) => (window.ergBackend ?? window).fetch(path, options);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const MACHINE = { bike: "BikeErg", row: "RowErg", ski: "SkiErg", run: "AssaultRunner" };
-const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-const TYPE_LABEL = { training: "Entraînement · ", blitz: "Blitz · max ", squad: "Squad · max ", test: "Test · " };
 // "A-0412 · Marie D." -> member, for the name fields' suggestions.
 let memberByLabel = new Map();
 const memberLabel = (m) => `${m.id} · ${m.name}`;
-
-function presetBody(p) {
-  if (p.type === "squad") return squadSteps(p);
-  if (p.type === "test") {
-    return `<p class="squad">Chacun tient la meilleure moyenne possible. Elle donne le niveau de l’adhérent sur sa machine (BikeErg, RowErg, SkiErg).</p>`;
-  }
-  return `<ol>${p.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`;
-}
-let presets = [];
-
-// Each machine type has its own list; the group wins when every rider finishes theirs.
-function squadSteps(p) {
-  const lists = Object.entries(p.machines).map(([machine, steps]) => `
-    <details><summary>${MACHINE[machine] ?? esc(machine)} · ${steps.length} objectifs</summary>
-      <ol>${steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol></details>`).join("");
-  return `<p class="squad">Chacun réalise ses propres objectifs.</p>${lists}`;
-}
+const KIND_LABEL = {
+  endurance: "Cible ≈ 75 % du niveau",
+  intervals: "Cible ≈ 120 % du niveau (110 % aux niveaux 9-10)",
+  threshold: "Cible ≈ 90 % du niveau",
+  test: "Donne le niveau sur la machine (BikeErg, RowErg, SkiErg)",
+};
+let formats = [];
 let chosen = null;
 
 function choose(id) {
-  chosen = presets.find((p) => p.id === id);
+  chosen = formats.find((f) => f.id === id);
   document.querySelectorAll(".preset").forEach((el) => el.classList.toggle("on", el.dataset.id === id));
-  $("duration-box").hidden = chosen.type !== "training";
-  $("duration").value = chosen.duration_min;
+  // With a rotation, each name goes on the machine the rider starts on.
+  $("riders-label").textContent = chosen.describe.includes("rotation")
+    ? "Qui commence sur quelle machine ? Chacun tourne ensuite Row → Bike → Ski."
+    : "Qui est sur quelle machine ? Laissez vide une machine inutilisée.";
 }
 
 async function load() {
   const setup = await (await api("/api/session/setup")).json();
-  presets = setup.presets;
+  formats = setup.formats;
   const members = setup.members ?? [];
   memberByLabel = new Map(members.map((m) => [memberLabel(m), m]));
   $("members").innerHTML = members.map((m) => `<option value="${esc(memberLabel(m))}"></option>`).join("");
-  $("presets").innerHTML = presets.map((p) => `
-    <div class="preset" role="button" tabindex="0" data-id="${esc(p.id)}">
-      <div class="type">${TYPE_LABEL[p.type]}${p.duration_min} min</div>
-      <div class="name">${esc(p.name)}</div>
-      ${presetBody(p)}
-      ${p.record_s != null ? `<div class="record">Record : ${clock(p.record_s)}</div>` : ""}
+  $("presets").innerHTML = formats.map((f) => `
+    <div class="preset" role="button" tabindex="0" data-id="${esc(f.id)}">
+      <div class="type">${esc(f.describe)}</div>
+      <div class="name">${esc(f.name)}</div>
+      <p class="squad">${KIND_LABEL[f.kind] ?? ""}</p>
     </div>`).join("");
   $("riders").innerHTML = setup.ergs.map((e) => `
     <div class="row${e.online ? "" : " offline"}">
@@ -136,7 +116,7 @@ async function load() {
         ? `<input name="weight" data-erg="${esc(e.id)}" type="number" min="30" max="250" placeholder="kg (facultatif)">`
         : "<span></span>"}
     </div>`).join("");
-  if (presets.length) choose(presets[0].id);
+  if (formats.length) choose(formats[0].id);
   showRunning(setup.running);
 }
 
@@ -174,7 +154,7 @@ $("form").addEventListener("submit", async (ev) => {
   const res = await api("/api/session/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ preset_id: chosen.id, duration_min: Number($("duration").value) || null, riders }),
+    body: JSON.stringify({ format_id: chosen.id, riders }),
   });
   $("start").disabled = false;
   if (!res.ok) { $("error").textContent = (await res.json()).detail; return; }

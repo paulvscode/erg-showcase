@@ -40,8 +40,10 @@ BADGES: dict[str, Badge] = {
     "record-energy": Badge("🔋", "Record d’énergie", "Produire plus qu’à sa meilleure séance"),
     "level-up": Badge("📈", "Niveau supérieur", "Monter d’un niveau à un test de palier"),
     "polyvalent": Badge("🔱", "Polyvalent", "Avoir un niveau sur BikeErg, RowErg et SkiErg"),
-    "all-objectives": Badge("✅", "Mission accomplie", "Réussir tous ses objectifs d’une séance"),
-    "above-target": Badge("🎯", "Au-dessus de la cible", "Dépasser 100 % de sa cible de niveau"),
+    "above-target": Badge(
+        "🎯", "Cible tenue", "Tenir sa cible sur un bloc (90 % des efforts en Intervalles)"
+    ),
+    "perfect-session": Badge("🏆", "Séance parfaite", "Tenir sa cible sur tous les blocs"),
     **{
         f"energy-{kj}": Badge(
             "⚡", f"{text.unit(kj, 'kJ')} cumulés", f"Cumuler {text.unit(kj, 'kJ')}"
@@ -53,7 +55,7 @@ BADGES: dict[str, Badge] = {
 
 @dataclass(frozen=True)
 class Performance:
-    """One member's result in one session."""
+    """One member's result on one block of a session (one machine)."""
 
     member_id: str
     ts: float
@@ -64,10 +66,10 @@ class Performance:
     energy_wh: float
     avg_w: float
     distance_m: float
-    steps_done: int = 0
-    step_count: int = 0
-    completed: bool = False  # every objective of the session (or of this rider, in a Squad)
-    score: float | None = None  # average watts ÷ the level target for the session's format
+    steps_done: int = 0  # efforts at or above target
+    step_count: int = 0  # efforts in the block
+    completed: bool = False  # the format's reward for the block was won
+    score: float | None = None  # average watts ÷ the member's target for the format
 
 
 @dataclass(frozen=True)
@@ -93,32 +95,49 @@ def counts_for_records(p: Performance) -> bool:
     return p.minutes >= RECORD_MIN_MINUTES
 
 
-def session_awards(history: list[Performance], new: Performance) -> list[Award]:
+def session_awards(history: list[Performance], new: list[Performance]) -> list[Award]:
+    """Badges for one session, given as its blocks (one Performance per block)."""
+    if not new:
+        return []
     awards = []
-    count = len(history) + 1
-    if count == 1:
-        awards.append(Award("first-session"))
-    if count in SESSION_MILESTONES:
-        awards.append(Award(f"sessions-{count}"))
+    sessions_before = {p.ts for p in history}
+    if new[0].ts not in sessions_before:
+        count = len(sessions_before) + 1
+        if count == 1:
+            awards.append(Award("first-session"))
+        if count in SESSION_MILESTONES:
+            awards.append(Award(f"sessions-{count}"))
 
-    machine = MACHINE_NAMES.get(new.machine, new.machine)
-    same = [p for p in history if p.machine == new.machine and counts_for_records(p)]
-    # A record is beating one's own best, so the first session only sets the bar.
-    if same and counts_for_records(new):
-        if new.avg_w > max(p.avg_w for p in same):
-            awards.append(Award("record-power", f"{machine} : {text.unit(round(new.avg_w), 'W')}"))
-        if new.distance_m > max(p.distance_m for p in same):
-            awards.append(Award("record-distance", f"{machine} : {text.distance(new.distance_m)}"))
-    if history and new.energy_wh > max(p.energy_wh for p in history):
-        awards.append(Award("record-energy", text.unit(round(new.energy_wh * KJ_PER_WH), "kJ")))
+    # A record is beating one's own best on that machine: the first time only sets the bar.
+    for machine in sorted({p.machine for p in new}):
+        earlier = [p for p in history if p.machine == machine and counts_for_records(p)]
+        mine = [p for p in new if p.machine == machine and counts_for_records(p)]
+        if not earlier or not mine:
+            continue
+        name = MACHINE_NAMES.get(machine, machine)
+        strongest = max(p.avg_w for p in mine)
+        if strongest > max(p.avg_w for p in earlier):
+            awards.append(Award("record-power", f"{name} : {text.unit(round(strongest), 'W')}"))
+        farthest = max(p.distance_m for p in mine)
+        if farthest > max(p.distance_m for p in earlier):
+            awards.append(Award("record-distance", f"{name} : {text.distance(farthest)}"))
 
-    if new.completed and new.step_count:
-        awards.append(Award("all-objectives", new.preset))
-    if new.score is not None and new.score >= 1:
-        awards.append(Award("above-target", f"{round(new.score * 100)} %"))
+    session_wh = sum(p.energy_wh for p in new)
+    earlier_sessions: dict[float, float] = {}
+    for p in history:
+        earlier_sessions[p.ts] = earlier_sessions.get(p.ts, 0.0) + p.energy_wh
+    if earlier_sessions and session_wh > max(earlier_sessions.values()):
+        awards.append(Award("record-energy", text.unit(round(session_wh * KJ_PER_WH), "kJ")))
+
+    for p in new:
+        if p.completed:
+            machine = MACHINE_NAMES.get(p.machine, p.machine)
+            awards.append(Award("above-target", f"{p.preset} · {machine}"))
+    if len(new) > 1 and all(p.completed for p in new):
+        awards.append(Award("perfect-session", new[0].preset))
 
     before_kj = sum(p.energy_wh for p in history) * KJ_PER_WH
-    after_kj = before_kj + new.energy_wh * KJ_PER_WH
+    after_kj = before_kj + session_wh * KJ_PER_WH
     for kj in ENERGY_MILESTONES_KJ:
         if before_kj < kj <= after_kj:
             awards.append(Award(f"energy-{kj}"))

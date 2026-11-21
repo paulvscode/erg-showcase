@@ -114,7 +114,6 @@
   .objective .meter .bar { flex: 1; height: 2vw; }
   .objective .pct { font-family: var(--display); font-style: normal; font-size: 3.4vw; min-width: 8vw; text-align: right; }
   .objective .sub, .session .sub { color: var(--muted); font-size: 1.2vw; margin-top: .5vw; }
-  .objective .splits { color: var(--gold); }
   .erg.out { opacity: .3; }
   .share { margin-bottom: .6vw; }
   .share .row { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: 1.05vw; }
@@ -144,6 +143,9 @@
   .results th { color: var(--muted); font-size: 1.1vw; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
   .results td:nth-child(2) { text-align: left; font-family: var(--display); font-style: normal; }
   .results tr:first-child td { color: var(--gold); }
+  .results td.detail { text-align: left; font-size: 1.3vw; font-family: var(--body); font-style: oblique; }
+  .results .note { color: var(--muted); font-size: 1.2vw; margin-top: 1.5vw; }
+  .share .target-pct { font-family: var(--display); font-style: normal; font-size: 2vw; color: var(--gold); }
   .results td.awards { text-align: left; font-size: 1.1vw; color: var(--gold); font-family: var(--body); font-style: oblique; }
   .share .level { color: var(--gold); font-family: var(--display); font-style: normal; font-size: 1.3vw; }
 
@@ -290,7 +292,7 @@ function tileContent(e, rider) {
   const big = showSpeed
     ? `${kmh(e.details?.speed_mps)}<small>km/h</small>`
     : `${e.estimated ? `<span class="approx">≈</span>` : ""}${int(e.watts)}<small>W</small>`;
-  const share = rider ? riderStrip(rider) : "";
+  const share = rider ? riderStrip(rider, e) : "";
   return `${head}${who}${share}
     <div class="watts${showSpeed ? " speed" : ""}">${big}</div>
     ${ladders}
@@ -300,10 +302,13 @@ function tileContent(e, rider) {
 // Tiles are created once and updated in place, so a running celebration isn't restarted.
 const tiles = new Map();
 
-let sessionType = null; // read by riderStrip while the tiles are drawn
+// Read by riderStrip while the tiles are drawn.
+let sessionType = null;
+let step = null;
 
 function renderErgs(ergs, workout) {
   sessionType = workout?.type ?? null;
+  step = workout?.step ?? null;
   const riders = new Map((workout?.riders ?? []).map((r) => [r.erg_id, r]));
   const box = $("ergs");
   box.style.setProperty("--cols", Math.min(Math.max(ergs.length, 1), 5));
@@ -365,55 +370,47 @@ function render(s) {
   $("goals").innerHTML = `<div class="label">Objectifs de la salle</div>${rows.join("")}`;
 
   renderErgs(s.ergs, s.workout);
-  renderWorkout(s.workout);
+  renderWorkout(s.workout, s.total_watts);
   showHighlights(s.highlights);
   renderControls(s.demo);
 }
 
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const pct = (n) => `${Math.round(n * 100)} %`;
+const PHASE = { effort: "Effort", rest: "Récup", transition: "Changez de machine" };
 let lastPhase = null;
-let lastStep = null;
+let lastStepKey = null;
 let goUntil = 0;
 
-function objectiveText(o) {
-  if (o.kind === "energy") return `${fr(o.value, 1)} / ${upTo(o.goal, 2)} Wh`;
-  if (o.kind === "distance") return `${km(o.value)} / ${km(o.goal)}`;
-  return `tenu ${Math.floor(o.value)} / ${o.goal} s`;
-}
-
-// What a rider sees on their tile during a session: their share of the energy,
-// or in a Squad their own current objective.
-const TIMED = new Set(["hold", "all_in", "speed"]);
-
-function riderStrip(r) {
+// What a rider sees on their tile during a session: their own target and how close they are.
+function riderStrip(r, e) {
   if (sessionType === "test") {
     const level = r.level ? `Niveau ${r.level.number} · ${esc(r.level.name)}` : "";
-    return `<div class="share mine"><div class="what"><b>${int(r.avg_w)} W</b> de moyenne</div>
+    return `<div class="share mine"><div class="what"><b>${int(r.average_w)} W</b> de moyenne</div>
       <div class="meter"><span class="level">${level}</span></div></div>`;
   }
-  if (r.step_count == null) {
-    return `<div class="share"><div class="row"><span><b>${Math.round(r.share * 100)} %</b> de la séance</span>
-      <span>${fr(r.energy_wh, 1)} Wh</span></div>${bar(r.share)}</div>`;
+  if (step?.kind === "transition") {
+    return `<div class="share mine"><div class="what"><b>→</b> arrive sur cette machine</div></div>`;
   }
-  const o = r.objective;
-  if (!o) {
-    return `<div class="share"><div class="row"><span><b>★ ${r.step_count}/${r.step_count}</b> terminé</span>
-      <span>${r.finished_s != null ? clock(r.finished_s) : ""}</span></div>${bar(1)}</div>`;
+  if (r.target_w == null) {
+    return `<div class="share mine"><div class="what">Pas encore de niveau sur cette machine</div></div>`;
   }
-  const status = TIMED.has(o.kind) ? `tenu ${Math.floor(o.value)}/${o.goal} s` : `${Math.floor(o.progress * 100)} %`;
-  return `<div class="share mine"><div class="what"><b>${r.steps_done + 1}/${r.step_count}</b> ${esc(o.label)}</div>
-    <div class="meter">${bar(o.progress)}<span>${status}</span></div></div>`;
+  const live = step?.kind === "effort" ? e.watts / r.target_w : null;
+  const effort = r.effort_w != null ? ` · moy. ${int(r.effort_w)} W` : "";
+  return `<div class="share mine"><div class="what">Cible <b>${int(r.target_w)} W</b>${effort}</div>
+    <div class="meter">${bar(live ?? 0)}<span class="target-pct">${live != null ? pct(live) : "récup"}</span></div></div>`;
 }
 
-function setBar(id, progress, step) {
+function setBar(id, progress, key) {
   const fill = $(id).firstElementChild;
-  // A new objective starts from empty at once instead of sliding back from full.
-  fill.style.transition = step !== lastStep ? "none" : "";
+  // A new phase starts from empty at once instead of sliding back from full.
+  fill.style.transition = key !== lastStepKey ? "none" : "";
+  lastStepKey = key;
   $(id).className = `bar${progress >= 1 ? " done" : ""}`;
-  fill.style.width = `${(progress * 100).toFixed(1)}%`;
+  fill.style.width = `${(Math.min(1, progress) * 100).toFixed(1)}%`;
 }
 
-function renderWorkout(w) {
+function renderWorkout(w, teamWatts) {
   $("normal-top").hidden = Boolean(w);
   $("session-top").hidden = !w;
   // "GO !" stays up a moment after the countdown ends.
@@ -431,84 +428,64 @@ function renderWorkout(w) {
   if (!w) return;
   if (w.phase === "finished") { renderResults(w); return; }
 
-  const race = w.type === "blitz" || w.type === "squad";
   $("s-name").textContent = w.preset;
-  $("s-clock").textContent = clock(race ? w.elapsed_s : w.remaining_s);
-  $("s-clock-sub").textContent = race
-    ? (w.record_s != null ? `Record : ${clock(w.record_s)}` : "Pas encore de record : à vous !")
-    : "restant";
-
-  if (w.type === "test") {
-    const progress = w.elapsed_s / Math.max(w.elapsed_s + w.remaining_s, 1);
-    $("s-step").textContent = "Test de palier";
-    $("s-what").textContent = "Tenez la meilleure moyenne possible";
-    setBar("s-bar", progress, null);
-    $("s-pct").textContent = `${Math.floor(progress * 100)} %`;
-    $("s-sub").textContent = "Le niveau de chacun est calculé sur sa puissance moyenne.";
-    return;
-  }
-  if (w.group) {
-    const g = w.group;
-    $("s-step").textContent = "Objectif collectif";
-    $("s-what").textContent = g.riders_done === g.rider_count
-      ? "Atteint ★"
-      : "Chacun termine ses objectifs";
-    setBar("s-bar", g.progress, null);
-    $("s-pct").textContent = `${Math.floor(g.progress * 100)} %`;
-    $("s-sub").textContent = `${w.steps_done} / ${w.step_count} objectifs · ${g.riders_done} / ${g.rider_count} participants ont terminé`;
-    return;
-  }
-  const o = w.objective;
-  $("s-step").textContent = o ? `Objectif ${w.steps_done + 1} / ${w.step_count}` : `${w.step_count} / ${w.step_count} objectifs`;
-  $("s-what").textContent = o ? o.label : "Tous les objectifs atteints ★";
-  const progress = o ? o.progress : 1;
-  setBar("s-bar", progress, w.steps_done);
-  lastStep = w.steps_done;
-  $("s-pct").textContent = `${Math.floor(progress * 100)} %`;
-  const splits = w.splits.map((s, i) => `✓${i + 1} ${clock(s.at_s)}`).join(" · ");
-  $("s-sub").innerHTML = [o ? objectiveText(o) : "", splits ? `<span class="splits">${splits}</span>` : ""]
-    .filter(Boolean).join(" — ");
-}
-
-function renderResults(w) {
-  if (w.type === "test") { renderTestResults(w); return; }
-  const squad = w.type === "squad";
-  let headline = `${w.steps_done} / ${w.step_count} objectifs`;
-  if (w.type === "blitz" && w.completed) headline = `Terminé en ${clock(w.elapsed_s)}`;
-  if (squad && w.completed) headline = `Objectif collectif atteint en ${clock(w.elapsed_s)}`;
-  if (w.type === "training") headline += ` · ${fr(w.total_wh, 1)} Wh`;
-  let record = "";
-  if (w.new_record) record = "★ NOUVEAU RECORD ! ★";
-  else if (w.type !== "training" && w.record_s != null) record = `Record : ${clock(w.record_s)}`;
-  const order = squad
-    ? (a, b) => b.steps_done - a.steps_done || (a.finished_s ?? 1e9) - (b.finished_s ?? 1e9)
-    : (a, b) => b.energy_wh - a.energy_wh;
-  const rows = [...w.riders].sort(order).map((r, i) => {
-    const first = squad
-      ? `<td>${r.steps_done}/${r.step_count}</td><td>${r.finished_s != null ? clock(r.finished_s) : "—"}</td>`
-      : `<td>${Math.round(r.share * 100)} %</td>`;
-    return `<tr><td>${i + 1}</td><td>${esc(r.name)}</td>${first}
-      <td>${fr(r.energy_wh, 1)} Wh</td><td>${int(r.avg_w)} W</td><td>${km(r.distance_m)}</td>${awardsCell(r)}</tr>`;
-  }).join("");
-  const heads = squad ? "<th>Objectifs</th><th>Terminé à</th>" : "<th>Part</th>";
-  $("results").innerHTML = `<h1>${esc(w.preset)}</h1>
-    <div class="headline">${headline}</div><div class="record">${record}</div>
-    <table><tr><th></th><th></th>${heads}<th>Énergie</th><th>Puiss. moy.</th><th>Distance</th><th>Badges</th></tr>${rows}</table>`;
+  $("s-clock").textContent = clock(w.remaining_s);
+  $("s-clock-sub").textContent = "restant";
+  const st = w.step;
+  if (!st) return;
+  const where = st.blocks > 1 ? `Bloc ${st.block}/${st.blocks}` : "";
+  const which = st.kind !== "transition" && st.efforts > 1 ? `Effort ${st.effort}/${st.efforts}` : "";
+  $("s-step").textContent = [where, which].filter(Boolean).join(" · ") || w.preset;
+  $("s-what").textContent = w.type === "test" ? "Tenez la meilleure moyenne possible" : PHASE[st.kind];
+  setBar("s-bar", 1 - st.remaining_s / st.duration_s, `${st.kind}${st.block}${st.effort}`);
+  $("s-pct").textContent = clock(st.remaining_s);
+  const team = `Puissance de l’équipe : ${fr(teamWatts / 1000, 1)} kW`;
+  $("s-sub").textContent = st.kind === "transition" ? `${team} · Pensez à boire un coup` : team;
 }
 
 function awardsCell(r) {
   return `<td class="awards">${(r.awards ?? []).map(esc).join("<br>")}</td>`;
 }
 
-function renderTestResults(w) {
-  const rows = [...w.riders].sort((a, b) => b.avg_w - a.avg_w).map((r, i) =>
-    `<tr><td>${i + 1}</td><td>${esc(r.name)}</td><td>${int(r.avg_w)} W</td>
-      <td>${r.level ? `${r.level.number} · ${esc(r.level.name)}` : "—"}</td>
-      <td>${fr(r.energy_wh, 1)} Wh</td><td>${km(r.distance_m)}</td>${awardsCell(r)}</tr>`
-  ).join("");
+// One line per rider, shaped by what the format measures.
+function resultCells(type, r) {
+  const blocks = r.blocks ?? [];
+  if (type === "test") {
+    return [r.level ? `Niveau ${r.level.number} · ${esc(r.level.name)}` : "—", ""];
+  }
+  if (type === "endurance") {
+    const spreads = blocks.map((b) => b.regularity).filter((x) => x != null);
+    return [
+      blocks.map((b) => `${int(b.average_w)} W${b.rewarded ? " ✓" : ""}`).join(" · "),
+      spreads.length ? `écart ${pct(Math.max(...spreads))}` : "",
+    ];
+  }
+  if (type === "intervals") {
+    const done = blocks.reduce((n, b) => n + b.succeeded, 0);
+    const all = blocks.reduce((n, b) => n + b.efforts_w.length, 0);
+    const drops = blocks.filter((b) => b.drop != null)
+      .map((b) => `${b.too_hard ? "⚠ " : ""}chute ${pct(b.drop)}`).join(" · ");
+    return [blocks.some((b) => b.target_w != null) ? `${done}/${all} efforts réussis` : `${all} efforts`, drops];
+  }
+  const b = blocks[0];
+  if (!b) return ["", ""];
+  const efforts = b.efforts_w.map((x) => `${int(x)} W${b.target_w != null && x >= b.target_w ? " ✓" : ""}`);
+  return [efforts.join(" · "), b.regularity != null ? `écart ${pct(b.regularity)}` : ""];
+}
+
+function renderResults(w) {
+  const heads = { test: "Niveau", endurance: "Blocs (✓ cible tenue)", intervals: "Efforts", threshold: "Efforts (✓ cible tenue)" };
+  const rows = [...w.riders].sort((a, b) => b.average_w - a.average_w).map((r) => {
+    const [detail, indicator] = resultCells(w.type, r);
+    return `<tr><td>${esc(r.name)}</td><td>${int(r.average_w)} W</td>
+      <td class="detail">${detail}</td><td class="detail">${indicator}</td>${awardsCell(r)}</tr>`;
+  }).join("");
+  const tooHard = w.riders.some((r) => (r.blocks ?? []).some((b) => b.too_hard));
+  const note = tooHard ? `<p class="note">⚠ Chute de plus de 10 % entre le 1er et le dernier effort : cible trop haute.</p>` : "";
   $("results").innerHTML = `<h1>${esc(w.preset)}</h1>
-    <div class="headline">Test terminé</div><div class="record">Les niveaux sont enregistrés sur les profils.</div>
-    <table><tr><th></th><th></th><th>Moyenne</th><th>Niveau</th><th>Énergie</th><th>Distance</th><th>Badges</th></tr>${rows}</table>`;
+    <div class="headline">${w.type === "test" ? "Test terminé" : "Séance terminée"}</div>
+    <div class="record">Énergie de l’équipe : ${fr(w.total_wh * 3.6)} kJ</div>
+    <table><tr><th></th><th>Moyenne</th><th>${heads[w.type]}</th><th>${w.type === "intervals" ? "Chute" : w.type === "test" ? "" : "Régularité"}</th><th>Badges</th></tr>${rows}</table>${note}`;
 }
 
 // Demo controls: only shown when the server runs with --demo.

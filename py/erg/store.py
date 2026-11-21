@@ -59,6 +59,16 @@ CREATE TABLE IF NOT EXISTS tests (
     watts REAL NOT NULL,
     level INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS efforts (
+    member_id TEXT NOT NULL,
+    ts REAL NOT NULL,
+    format TEXT NOT NULL,
+    block INTEGER NOT NULL,
+    effort INTEGER NOT NULL,
+    machine TEXT NOT NULL,
+    avg_w REAL NOT NULL,
+    target_w REAL
+);
 CREATE TABLE IF NOT EXISTS awards (
     member_id TEXT NOT NULL,
     ts REAL NOT NULL,
@@ -123,14 +133,6 @@ class Store:
             ),
         )
 
-    def race_records(self) -> dict[str, float]:
-        """Fastest completed time per race preset (Blitz, Squad), in seconds."""
-        rows = self.db.execute(
-            "SELECT preset_id, MIN(seconds) FROM workouts"
-            " WHERE type != 'training' AND completed = 1 GROUP BY preset_id"
-        )
-        return dict(rows.fetchall())
-
     # --- members --------------------------------------------------------------
 
     def add_member(self, member_id: str, name: str, created: float) -> None:
@@ -182,6 +184,10 @@ class Store:
         rows = self.db.execute("SELECT * FROM tests WHERE member_id = ? ORDER BY ts", (member_id,))
         return [StepTest(*row) for row in rows.fetchall()]
 
+    def add_efforts(self, rows: list[tuple]) -> None:
+        """(member_id, ts, format, block, effort, machine, avg_w, target_w) per effort."""
+        self.db.executemany("INSERT INTO efforts VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
+
     def add_awards(self, member_id: str, ts: float, awards: list[Award]) -> None:
         self.db.executemany(
             "INSERT INTO awards VALUES (?, ?, ?, ?)",
@@ -202,7 +208,10 @@ class Store:
         return dict(rows.fetchall())
 
     def session_counts(self) -> dict[str, int]:
-        rows = self.db.execute("SELECT member_id, COUNT(*) FROM performances GROUP BY member_id")
+        # A session has one row per block: count sessions, not rows.
+        rows = self.db.execute(
+            "SELECT member_id, COUNT(DISTINCT ts) FROM performances GROUP BY member_id"
+        )
         return dict(rows.fetchall())
 
     def records(self) -> Iterator[Record]:

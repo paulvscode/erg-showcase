@@ -30,7 +30,11 @@ class Showcase:
         self.profiles = ProfileBook(self.config, Store(":memory:"))
         seed_members(self.profiles, random.Random(7), time.time())
         self.desk = SessionDesk(
-            self.config, self.room, {}, self.profiles.record_session, self.profiles.name
+            self.config,
+            self.room,
+            self.profiles.record_session,
+            self.profiles.name,
+            lambda member, machine, kind: self.profiles.target(member, machine, kind, time.time()),
         )
 
     def state(self, now: float) -> dict:
@@ -84,7 +88,7 @@ class Showcase:
                 RiderEntry(r["erg_id"], r["name"], r.get("weight_kg"), r.get("member_id"))
                 for r in body["riders"]
             ]
-            self.desk.start(body["preset_id"], body.get("duration_min"), entries, now)
+            self.desk.start(body["format_id"], entries, now)
             return {"ok": True}
         if (method, path) == ("POST", "/api/session/stop"):
             self.desk.stop()

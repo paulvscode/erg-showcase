@@ -8,7 +8,7 @@ import yaml
 
 from erg.levels import Level, LevelTable
 from erg.objectives import Objective
-from erg.presets import Preset, Step
+from erg.presets import Format
 
 DEFAULT_PATH = Path("config.yaml")
 
@@ -66,8 +66,8 @@ class Milestones:
 class Sessions:
     countdown_s: float
     results_s: float
-    presets: list[Preset]
-    hold_grace_s: float = 0.0  # a dip this short pauses a hold's timer instead of resetting it
+    transition_s: float  # changing machine between blocks
+    formats: list[Format]
 
 
 @dataclass(frozen=True)
@@ -118,8 +118,8 @@ def load_config(path: Path = DEFAULT_PATH) -> Config:
         sessions=Sessions(
             countdown_s=raw["sessions"]["countdown_s"],
             results_s=raw["sessions"]["results_s"],
-            presets=[_load_preset(p) for p in raw["sessions"]["presets"]],
-            hold_grace_s=raw["sessions"]["hold_grace_s"],
+            transition_s=raw["sessions"]["transition_s"],
+            formats=[Format(**f) for f in raw["sessions"]["formats"]],
         ),
         levels=_load_levels(raw["levels"]),
     )
@@ -140,15 +140,6 @@ def _load_levels(raw: dict) -> LevelTable:
     return LevelTable(
         levels=levels, test_minutes=raw["test_minutes"], window_days=raw["window_days"]
     )
-
-
-def _load_preset(raw: dict) -> Preset:
-    steps = [Step(**step) for step in raw.get("steps", [])]
-    machines = {
-        machine: [Step(**step) for step in machine_steps]
-        for machine, machine_steps in raw.get("machines", {}).items()
-    }
-    return Preset(**{**raw, "steps": steps, "machines": machines})
 
 
 def _load_milestones(raw: dict) -> Milestones:
@@ -178,15 +169,11 @@ def _validate(config: Config) -> None:
         _check_steps(f"milestones.{machine}.distance_m", ladders.distance_m)
     if config.runner_weight_kg <= 0:
         raise ValueError("runner_weight_kg must be positive")
-    preset_ids = [p.id for p in config.sessions.presets]
-    if len(preset_ids) != len(set(preset_ids)):
-        raise ValueError("sessions.presets: ids must be unique")
-    config.levels.validate()
-    for preset in config.sessions.presets:
-        preset.validate()
-        unknown = set(preset.machines) - set(MACHINES)
-        if unknown:
-            raise ValueError(f"preset {preset.id}: unknown machines {', '.join(sorted(unknown))}")
+    format_ids = [f.id for f in config.sessions.formats]
+    if len(format_ids) != len(set(format_ids)):
+        raise ValueError("sessions.formats: ids must be unique")
+    for fmt in config.sessions.formats:
+        fmt.validate()
 
 
 def _check_steps(name: str, steps: list[float]) -> None:

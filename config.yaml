@@ -26,6 +26,12 @@ gateways:
     - id: ERG-03
       name: simulated
       machine: row
+    - id: ERG-04
+      name: simulated
+      machine: ski
+    - id: ERG-05
+      name: simulated
+      machine: ski
 teams:
 - id: red
   name: Rouge
@@ -179,127 +185,40 @@ runner_weight_kg: 75
 sessions:
   countdown_s: 5
   results_s: 30
-  hold_grace_s: 2
-  presets:
-  - id: training-3
-    name: Entraînement (démo 3 min)
-    type: training
-    duration_min: 3
-    steps:
-    - kind: energy
-      target: 5
-    - kind: energy
-      target: 8
-    - kind: energy
-      target: 10
-    - kind: energy
-      target: 12
-    - kind: energy
-      target: 15
-    - kind: energy
-      target: 20
-  - id: blitz-demo
-    name: Blitz (démo)
-    type: blitz
-    duration_min: 5
-    steps:
-    - kind: energy
-      target: 5
-    - kind: hold
-      target: 1000
-      seconds: 10
-    - kind: distance
-      target: 500
-    - kind: all_in
-      target: 150
-      seconds: 10
-    - kind: energy
-      target: 8
-  - id: squad-demo
-    name: Squad (démo)
-    type: squad
-    duration_min: 5
-    machines:
-      bike:
-      - kind: energy
-        target: 1
-      - kind: distance
-        target: 300
-      - kind: hold
-        target: 150
-        seconds: 10
-      - kind: energy
-        target: 2
-      - kind: distance
-        target: 500
-      row:
-      - kind: energy
-        target: 1
-      - kind: distance
-        target: 200
-      - kind: hold
-        target: 130
-        seconds: 10
-      - kind: energy
-        target: 2
-      - kind: distance
-        target: 300
-      ski:
-      - kind: energy
-        target: 0.8
-      - kind: distance
-        target: 200
-      - kind: hold
-        target: 110
-        seconds: 10
-      - kind: energy
-        target: 1.5
-      - kind: distance
-        target: 300
-  - id: intervals-demo
+  transition_s: 15
+  formats:
+  - id: endurance
+    name: Endurance (démo)
+    kind: endurance
+    blocks: 3
+    efforts: 1
+    effort_s: 60
+    rest_s: 0
+    rotate: true
+  - id: intervals
     name: Intervalles (démo)
-    type: squad
-    duration_min: 5
-    machines:
-      bike:
-      - kind: hold
-        target: 150
-        seconds: 10
-      - kind: speed
-        target: 25
-        seconds: 10
-      - kind: hold
-        target: 180
-        seconds: 10
-      - kind: speed
-        target: 27
-        seconds: 10
-      row:
-      - kind: hold
-        target: 130
-        seconds: 10
-      - kind: hold
-        target: 150
-        seconds: 10
-      - kind: hold
-        target: 170
-        seconds: 10
-      - kind: hold
-        target: 180
-        seconds: 10
-      ski:
-      - kind: hold
-        target: 100
-        seconds: 10
-      - kind: hold
-        target: 120
-        seconds: 10
-      - kind: hold
-        target: 130
-        seconds: 10
-      - kind: hold
-        target: 140
-        seconds: 10
+    kind: intervals
+    blocks: 3
+    efforts: 4
+    effort_s: 10
+    rest_s: 10
+    rotate: true
+  - id: threshold
+    name: Seuils (démo)
+    kind: threshold
+    blocks: 1
+    efforts: 4
+    effort_s: 30
+    rest_s: 20
+    rotate: false
+  - id: test
+    name: Test de palier (démo 1 min)
+    kind: test
+    blocks: 1
+    efforts: 1
+    effort_s: 60
+    rest_s: 0
+    rotate: false
 levels:
   test_minutes: 4
   window_days: 120

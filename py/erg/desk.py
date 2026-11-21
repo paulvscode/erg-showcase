@@ -10,16 +10,14 @@ from dataclasses import dataclass
 from erg import text
 from erg.config import Config
 from erg.levels import LEVEL_MACHINES
-from erg.presets import Preset
+from erg.presets import Format
 from erg.room import Room
-from erg.workout import Rider, Track, Workout
+from erg.workout import Rider, Workout, erg_for_block, lanes, timeline
 
 log = logging.getLogger("erg.desk")
 
 NAME_MAX = 24
 WEIGHT_RANGE_KG = (30, 250)
-DURATION_RANGE_MIN = (1, 180)
-MACHINE_NAMES = {"bike": "BikeErg", "row": "RowErg", "ski": "SkiErg", "run": "AssaultRunner"}
 
 
 class SessionError(Exception):
@@ -32,7 +30,7 @@ class SessionError(Exception):
 
 @dataclass(frozen=True)
 class RiderEntry:
-    erg_id: str
+    erg_id: str  # the machine the rider starts on
     name: str
     weight_kg: float | None = None
     member_id: str | None = None
@@ -43,49 +41,38 @@ class SessionDesk:
         self,
         config: Config,
         room: Room,
-        records: dict[str, float],
-        on_finished: Callable[[Workout, dict], dict[str, list[str]] | None],
+        on_finished: Callable[[Workout, dict], dict[int, list[str]] | None],
         find_member: Callable[[str], str | None] = lambda member_id: None,
+        target_for: Callable[[str, str, str], float | None] = lambda member, machine, kind: None,
     ) -> None:
         self.config = config
         self.room = room
-        self.presets = {p.id: p for p in config.sessions.presets}
-        self.records = records  # best time per race preset (Blitz, Squad)
-        self.on_finished = on_finished  # returns the badges won per erg, if any
+        self.formats = {f.id: f for f in config.sessions.formats}
+        self.on_finished = on_finished  # returns the badges won per rider index, if any
         self.find_member = find_member  # member id -> name, or None if unknown
+        self.target_for = target_for  # (member id, machine, format kind) -> target watts
+        self.lane_of = lanes([(e.id, e.machine) for e in config.all_ergs()])
         self.workout: Workout | None = None
 
     def setup(self, now: float) -> dict:
         """What the /session page needs to offer a choice."""
-        presets = []
-        for p in self.presets.values():
-            entry = {
-                "id": p.id,
-                "name": p.name,
-                "type": p.type,
-                "duration_min": p.duration_min,
-                "steps": [s.label() for s in p.steps],
-                "machines": {
-                    m: [s.rider_label() for s in steps] for m, steps in p.machines.items()
-                },
-                "record_s": self.records.get(p.id),
-            }
-            presets.append(entry)
+        formats = [
+            {"id": f.id, "name": f.name, "kind": f.kind, "describe": f.describe()}
+            for f in self.formats.values()
+        ]
         ergs = [
             {"id": e.erg_id, "machine": e.machine, "online": self.room.is_online(e, now)}
             for e in self.room.ergs.values()
         ]
-        return {"presets": presets, "ergs": ergs, "running": self.workout is not None}
+        return {"formats": formats, "ergs": ergs, "running": self.workout is not None}
 
-    def start(
-        self, preset_id: str, duration_min: float | None, entries: list[RiderEntry], now: float
-    ) -> None:
+    def start(self, format_id: str, entries: list[RiderEntry], now: float) -> None:
         if self.workout is not None:
             raise SessionError(409, "Une séance est déjà en cours.")
-        preset = self.presets.get(preset_id)
-        if preset is None:
+        fmt = self.formats.get(format_id)
+        if fmt is None:
             raise SessionError(400, "Type de séance inconnu.")
-        entries = [e for e in entries if e.name.strip()]
+        entries = [e for e in entries if e.name.strip() or e.member_id]
         if not entries:
             raise SessionError(400, "Saisissez au moins un prénom.")
         if len({e.erg_id for e in entries}) != len(entries):
@@ -93,30 +80,22 @@ class SessionDesk:
         members = [e.member_id for e in entries if e.member_id]
         if len(set(members)) != len(members):
             raise SessionError(400, "Un adhérent ne peut être que sur une machine.")
-        riders = [self._rider(preset, e) for e in entries]
-        duration = preset.duration_min
-        if preset.type == "training" and duration_min:
-            duration = duration_min
-        if not DURATION_RANGE_MIN[0] <= duration <= DURATION_RANGE_MIN[1]:
-            raise SessionError(400, "La durée doit être comprise entre 1 et 180 minutes.")
+        riders = [self._rider(fmt, e) for e in entries]
 
         for rider in riders:
-            self.room.set_rider_weight(rider.erg_id, rider.weight_kg)
+            self.room.set_rider_weight(rider.ergs[0], rider.weight_kg)
         starts_at = now + self.config.sessions.countdown_s
         self.workout = Workout(
-            preset=preset,
+            fmt=fmt,
             riders=riders,
             starts_at=starts_at,
-            ends_at=starts_at + duration * 60,
+            phases=timeline(fmt, self.config.sessions.transition_s),
             tick_s=self.config.timing.tick_s,
-            hold_grace_s=self.config.sessions.hold_grace_s,
-            record_s=self.records.get(preset.id),
         )
-        log.info("session %s starting with %s", preset.id, ", ".join(r.name for r in riders))
+        log.info("session %s starting with %s", fmt.id, ", ".join(r.name for r in riders))
 
-    def _rider(self, preset: Preset, entry: RiderEntry) -> Rider:
-        erg = self.room.ergs.get(entry.erg_id)
-        if erg is None:
+    def _rider(self, fmt: Format, entry: RiderEntry) -> Rider:
+        if entry.erg_id not in self.room.ergs:
             raise SessionError(400, f"Machine inconnue{text.NBSP}: {entry.erg_id}.")
         weight = entry.weight_kg
         if weight is not None and not WEIGHT_RANGE_KG[0] <= weight <= WEIGHT_RANGE_KG[1]:
@@ -126,27 +105,30 @@ class SessionDesk:
             name = self.find_member(entry.member_id)
             if name is None:
                 raise SessionError(400, f"Adhérent inconnu{text.NBSP}: {entry.member_id}.")
-        track = None
-        if preset.type == "squad":
-            steps = preset.machines.get(erg.machine)
-            if not steps:
-                machine = MACHINE_NAMES.get(erg.machine, erg.machine)
-                message = f"Cette séance n'a pas d'objectifs pour la machine {machine}."
-                raise SessionError(400, message)
-            track = Track(steps)
-        return Rider(entry.erg_id, name, weight, track=track, member_id=entry.member_id)
+        ergs = [
+            erg_for_block(entry.erg_id, block, self.lane_of, fmt.rotate)
+            for block in range(fmt.blocks)
+        ]
+        machines = [self.room.ergs[e].machine for e in ergs]
+        targets = [
+            self.target_for(entry.member_id, machine, fmt.kind)
+            if entry.member_id and not fmt.is_test
+            else None
+            for machine in machines
+        ]
+        return Rider(name, ergs, machines, targets, entry.member_id, weight)
 
     def stop(self) -> None:
         if self.workout is None:
             raise SessionError(409, "Aucune séance en cours.")
-        log.info("session %s stopped", self.workout.preset.id)
+        log.info("session %s stopped", self.workout.fmt.id)
         self.cancel()
 
     def cancel(self) -> None:
         if self.workout is None:
             return
         for rider in self.workout.riders:
-            self.room.set_rider_weight(rider.erg_id, None)
+            self.room.set_rider_weight(rider.ergs[0], None)
         self.workout = None
 
     def tick(self, now: float) -> None:
@@ -157,34 +139,21 @@ class SessionDesk:
         if workout.phase != "finished":
             return
         if not workout.saved:
-            self._finished(workout, now)
+            workout.awards = self.on_finished(workout, workout.view(now)) or {}
+            workout.saved = True
+            log.info("session %s finished", workout.fmt.id)
         if now - workout.finished_at > self.config.sessions.results_s:
             self.cancel()
-
-    def _finished(self, workout: Workout, now: float) -> None:
-        preset = workout.preset
-        if preset.is_race and workout.completed:
-            seconds = workout.elapsed(now)
-            self.records[preset.id] = min(seconds, self.records.get(preset.id, seconds))
-        workout.awards = self.on_finished(workout, workout.view(self.room, now)) or {}
-        workout.saved = True
-        log.info(
-            "session %s finished: %d/%d objectives",
-            preset.id,
-            workout.steps_done,
-            workout.step_count,
-        )
 
     def view(self, now: float) -> dict | None:
         if self.workout is None:
             return None
-        state = self.workout.view(self.room, now)
-        if self.workout.preset.type == "test":
+        state = self.workout.view(now)
+        if self.workout.fmt.is_test:
             # Show each rider the level their average so far would give.
             levels = self.config.levels
             for rider in state["riders"]:
-                machine = self.room.ergs[rider["erg_id"]].machine
-                if machine in LEVEL_MACHINES and rider["avg_w"] > 0:
-                    level = levels.level_for(rider["avg_w"])
+                if rider["machine"] in LEVEL_MACHINES and rider["average_w"] > 0:
+                    level = levels.level_for(rider["average_w"])
                     rider["level"] = {"number": level.number, "name": level.name}
         return state
